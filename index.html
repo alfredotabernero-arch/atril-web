@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Atril</title>
+  <meta name="description" content="Cuaderno de estudio para músicos: obras, plan de estudio, metrónomo y afinador.">
+  <meta name="theme-color" content="#13112A" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F4F2FF" media="(prefers-color-scheme: light)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icono.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icono-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Atril">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- Pantalla de bienvenida: se ve al abrir la app y desaparece sola (o al tocarla) -->
+  <div id="bienvenida" role="img" aria-label="Atril, tu cuaderno de estudio musical. Creado por Alfredo Tabernero Martínez">
+    <script>
+      try { if (sessionStorage.getItem('atrilBienvenida') || localStorage.getItem('atrilSinBienvenida')) document.getElementById('bienvenida').className = 'oculta'; } catch (e) {}
+    </script>
+    <div class="bv-ondas"><i></i><i></i><i></i></div>
+    <div class="bv-notas">
+      <span style="left:8%;animation-delay:0.0s;font-size:1.9rem">♪</span>
+      <span style="left:22%;animation-delay:1.3s;font-size:1.5rem">♫</span>
+      <span style="left:37%;animation-delay:0.6s;font-size:2.3rem">♩</span>
+      <span style="left:55%;animation-delay:2.1s;font-size:1.7rem">♬</span>
+      <span style="left:70%;animation-delay:0.3s;font-size:2.0rem">♪</span>
+      <span style="left:84%;animation-delay:1.6s;font-size:2.4rem">♫</span>
+      <span style="left:92%;animation-delay:2.6s;font-size:1.6rem">♩</span>
+      <span style="left:15%;animation-delay:3.0s;font-size:2.1rem">♬</span>
+      <span style="left:46%;animation-delay:3.4s;font-size:1.4rem">♪</span>
+      <span style="left:63%;animation-delay:2.8s;font-size:1.8rem">♫</span>
+    </div>
+    <div class="bv-logo">
+      <svg viewBox="100 100 312 340" aria-hidden="true">
+        <path class="trazo" d="M136 122h240l-22 150H158z M256 272v148 M176 420l80-60 80 60"/>
+        <path class="linea" d="M182 166h150"/>
+        <path class="linea" d="M186 196h100"/>
+        <path class="linea" d="M190 226h136"/>
+        <circle class="bola" cx="300" cy="196" r="16"/>
+      </svg>
+    </div>
+    <div class="bv-titulo"><span style="animation-delay:0.55s">A</span><span style="animation-delay:0.64s">t</span><span style="animation-delay:0.73s">r</span><span style="animation-delay:0.82s">i</span><span style="animation-delay:0.91s">l</span></div>
+    <div class="bv-lema">Tu cuaderno de estudio musical</div>
+    <div class="bv-pulso"><i></i><i></i><i></i><i></i></div>
+    <div class="bv-toca">Toca para entrar</div>
+    <div class="bv-autor">Creado por <b>Alfredo Tabernero Martínez</b><small id="bv-version"></small></div>
+  </div>
+  <div id="app"></div>
+  <noscript>Atril necesita JavaScript.</noscript>
+
+  <script>window.Atril = { VERSION: '1.6.0' };</script>
+  <script src="js/vendor/capacitor.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/iconos.js"></script>
+  <script src="js/nativo.js"></script>
+  <script src="js/zip.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/pitch.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/relax.js"></script>
+  <script src="js/modelo.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/fotos.js"></script>
+  <script src="js/anotaciones.js"></script>
+  <script src="js/views/hoy.js"></script>
+  <script src="js/views/obras.js"></script>
+  <script src="js/views/seccion.js"></script>
+  <script src="js/views/atril.js"></script>
+  <script src="js/views/herramientas.js"></script>
+  <script src="js/views/afinador.js"></script>
+  <script src="js/views/otras.js"></script>
+  <script src="js/views/relajacion.js"></script>
+  <script src="js/views/estadisticas.js"></script>
+  <script src="js/views/ajustes.js"></script>
+</body>
+</html>

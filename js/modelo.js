@@ -1,0 +1,303 @@
+/* Atril — reglas del dominio: estados, progreso, plan de estudio y sesión en curso */
+(function (A) {
+  'use strict';
+  const { DB, u } = A;
+
+  /*
+   * Fases de estudio. Cada fase ocupa un tramo del progreso:
+   *   Leyendo 0–20 % (según los compases leídos) · Montando 20–50 % · Puliendo 50–80 % · Lista 100 %.
+   * Dentro de Montando y Puliendo se avanza con el dominio (estrellas) y el tempo conseguido.
+   */
+  const ESTADOS = [
+    { id: 'pendiente', nombre: 'Sin empezar', corto: 'Sin empezar', desde: 0, hasta: 0, color: '#A9A4C8' },
+    { id: 'lectura', nombre: 'Leyendo', corto: 'Leyendo', desde: 0, hasta: 0.2, color: '#3D7BFF' },
+    { id: 'montaje', nombre: 'Montando', corto: 'Montando', desde: 0.2, hasta: 0.5, color: '#FF8A3D' },
+    { id: 'pulido', nombre: 'Puliendo', corto: 'Puliendo', desde: 0.5, hasta: 0.8, color: '#B455F5' },
+    { id: 'lista', nombre: 'Lista', corto: 'Lista', desde: 1, hasta: 1, color: '#22C27A' },
+    { id: 'archivada', nombre: 'Archivada', corto: 'Archivada', desde: 1, hasta: 1, color: '#7F7AA8' }
+  ];
+  const FASES = ESTADOS.filter(e => e.id !== 'archivada');
+  const estado = id => ESTADOS.find(e => e.id === id) || ESTADOS[0];
+  const indiceFase = id => Math.max(0, FASES.findIndex(f => f.id === id));
+  const faseDe = s => (s && FASES.some(f => f.id === s.fase)) ? s.fase : 'pendiente';
+
+  const DOMINIO = ['Sin valorar', 'Muy inseguro', 'Con dificultad', 'Aceptable', 'Seguro', 'Dominado'];
+
+  const COLORES = ['#7C5CFF', '#FF4F8B', '#FF8A3D', '#F5B400', '#22C27A', '#16B4C8', '#3D7BFF', '#B455F5'];
+
+  /** Compases de una sección (por rango o, en datos antiguos, por cantidad) */
+  function compasesSeccion(s) {
+    if (s.desde > 0 && s.hasta >= s.desde) return s.hasta - s.desde + 1;
+    return s.compases || 0;
+  }
+  /** "c. 1–34" */
+  function rangoTexto(s) {
+    if (s.desde > 0 && s.hasta > 0) return s.desde === s.hasta ? 'c. ' + s.desde : 'c. ' + s.desde + '–' + s.hasta;
+    if (s.compases) return s.compases + ' c.';
+    return '';
+  }
+  const pendientes = s => (s.tareas || []).filter(t => !t.hecha);
+  const tieneRango = s => s.desde > 0 && s.hasta >= s.desde;
+
+  /** Parte leída de una sección, 0..1 (completa si ya pasó de «Leyendo») */
+  function fraccionLeida(s) {
+    const f = faseDe(s);
+    if (f === 'pendiente') return 0;
+    if (f !== 'lectura') return 1;
+    if (tieneRango(s)) {
+      const n = compasesSeccion(s);
+      return u.clamp(((s.leidoHasta || 0) - s.desde + 1) / n, 0, 1);
+    }
+    return u.clamp((s.leidoPct || 0) / 100, 0, 1);
+  }
+  /** Compases leídos de una sección */
+  const compasesLeidos = s => Math.round(compasesSeccion(s) * fraccionLeida(s));
+
+  /** Lo bien que va una sección dentro de su fase, 0..1: dominio y tempo a partes iguales */
+  function maestria(s) {
+    const dom = (s.dominio || 0) / 5;
+    if (s.tempoObjetivo > 0 && s.tempoActual > 0) return 0.5 * dom + 0.5 * Math.min(1, s.tempoActual / s.tempoObjetivo);
+    return dom;
+  }
+
+  /** Progreso de una sección, 0..1 */
+  function progresoSeccion(s) {
+    const f = estado(faseDe(s));
+    if (f.id === 'lectura') return f.hasta * fraccionLeida(s);
+    if (f.id === 'montaje' || f.id === 'pulido') return f.desde + (f.hasta - f.desde) * maestria(s);
+    return f.desde;
+  }
+
+  /** Fase de la obra: la manual si no hay secciones; si las hay, la de la sección más atrasada */
+  function estadoObra(obra, secciones) {
+    if (obra.estado === 'archivada') return 'archivada';
+    if (!secciones || !secciones.length) return estado(obra.estado).id;
+    const idx = secciones.map(s => indiceFase(faseDe(s)));
+    let min = Math.min(...idx);
+    if (min === 0 && Math.max(...idx) > 0) min = 1; // si alguna está empezada, la obra está «Leyendo»
+    return FASES[min].id;
+  }
+
+  /** Progreso de una obra, 0..1 (ponderado por compases si los hay) */
+  function progresoObra(obra, secciones) {
+    if (!secciones || !secciones.length) return estado(obra.estado).desde;
+    let tot = 0, acc = 0;
+    secciones.forEach(s => {
+      const w = compasesSeccion(s) || 1;
+      tot += w; acc += w * progresoSeccion(s);
+    });
+    return tot ? acc / tot : 0;
+  }
+
+  /** Lectura de la obra: compases leídos y totales (solo secciones con compases) */
+  function lecturaObra(secciones) {
+    let leidos = 0, total = 0;
+    (secciones || []).forEach(s => { const n = compasesSeccion(s); total += n; leidos += compasesLeidos(s); });
+    return { leidos, total };
+  }
+
+  /** Asigna fase a las secciones de versiones anteriores (que no la tenían) */
+  async function migrar() {
+    const secs = await DB.all('secciones');
+    const sinFase = secs.filter(s => !s.fase);
+    if (!sinFase.length) return;
+    const obras = Object.fromEntries((await DB.all('obras')).map(o => [o.id, o]));
+    for (const s of sinFase) {
+      const e = obras[s.obraId] ? obras[s.obraId].estado : 'lectura';
+      s.fase = e === 'archivada' ? 'lista' : (FASES.some(f => f.id === e) ? e : 'lectura');
+      await DB.put('secciones', s);
+    }
+  }
+
+  /** ¿Va la obra por detrás de lo esperado para su fecha objetivo? */
+  function ritmoObra(obra, progreso, est) {
+    est = est || obra.estado;
+    if (!obra.fechaObjetivo || est === 'archivada' || est === 'lista') return null;
+    const ini = new Date(obra.fechaInicio || obra.creada);
+    const fin = new Date(obra.fechaObjetivo + 'T23:59:59');
+    const hoy = new Date();
+    const total = Math.max(1, u.diasEntre(ini, fin));
+    const pasados = u.clamp(u.diasEntre(ini, hoy), 0, total);
+    const esperado = pasados / total;
+    const quedan = u.diasEntre(hoy, fin);
+    let nivel = 'bien';
+    if (quedan < 0 && progreso < 1) nivel = 'vencida';
+    else if (progreso < esperado - 0.2) nivel = 'retrasada';
+    else if (progreso < esperado - 0.08) nivel = 'justa';
+    return { esperado, quedan, nivel };
+  }
+
+  /* ---------------- Plan de estudio ---------------- */
+  const PLAN_DEF = { dias: [45, 45, 45, 45, 45, 30, 0], obras: {} }; // lunes..domingo
+
+  async function plan() {
+    const p = await DB.kvGet('plan', null);
+    return Object.assign({}, PLAN_DEF, p || {}, { obras: (p && p.obras) || {} });
+  }
+  /** Minutos previstos para una fecha (índice lunes=0) */
+  function previstoDia(p, fecha) {
+    const wd = (new Date(fecha).getDay() + 6) % 7;
+    return p.dias[wd] || 0;
+  }
+
+  /** Suma minutos de sesiones agrupados por día (clave AAAA-MM-DD) */
+  function minutosPorDia(sesiones) {
+    const m = {};
+    sesiones.forEach(s => {
+      const k = u.claveDia(s.inicio);
+      m[k] = (m[k] || 0) + (s.minutos || 0);
+    });
+    return m;
+  }
+
+  /** Racha de días consecutivos con estudio (hoy cuenta si ya se estudió) */
+  function racha(porDia) {
+    let n = 0, d = new Date();
+    if (!porDia[u.claveDia(d)]) d = u.sumarDias(d, -1);
+    while (porDia[u.claveDia(d)] > 0) { n++; d = u.sumarDias(d, -1); }
+    return n;
+  }
+
+  /* ---------------- Sesión de estudio en curso ---------------- */
+  const sesion = {
+    estado: null, // {obraId, seccionId, inicio, pausadaEn, pausas}
+    _ev: new Set(),
+    on(f) { this._ev.add(f); return () => this._ev.delete(f); },
+    _emit() { this._ev.forEach(f => f(this.estado)); },
+    async cargar() { this.estado = await DB.kvGet('sesionActiva', null); this._emit(); },
+    async _guardar() { await DB.kvSet('sesionActiva', this.estado); this._emit(); },
+
+    segundos() {
+      const e = this.estado;
+      if (!e) return 0;
+      const fin = e.pausadaEn || Date.now();
+      return (fin - e.inicio - (e.pausas || 0)) / 1000;
+    },
+    async iniciar(obraId, seccionId) {
+      if (this.estado) return;
+      this.estado = { obraId: obraId || null, seccionId: seccionId || null, inicio: Date.now(), pausadaEn: null, pausas: 0 };
+      await this._guardar();
+    },
+    async cambiar(obraId, seccionId) {
+      if (!this.estado) return;
+      this.estado.obraId = obraId || null; this.estado.seccionId = seccionId || null;
+      await this._guardar();
+    },
+    async pausar() {
+      if (!this.estado || this.estado.pausadaEn) return;
+      this.estado.pausadaEn = Date.now();
+      await this._guardar();
+    },
+    async reanudar() {
+      if (!this.estado || !this.estado.pausadaEn) return;
+      this.estado.pausas += Date.now() - this.estado.pausadaEn;
+      this.estado.pausadaEn = null;
+      await this._guardar();
+    },
+    async descartar() { this.estado = null; await DB.kvSet('sesionActiva', null); this._emit(); },
+    /** Cierra la sesión guardando los datos del diálogo de cierre */
+    async terminar(datos) {
+      const e = this.estado;
+      if (!e) return null;
+      const s = {
+        obraId: datos.obraId !== undefined ? datos.obraId : e.obraId,
+        seccionId: datos.seccionId !== undefined ? datos.seccionId : e.seccionId,
+        inicio: e.inicio,
+        fin: e.pausadaEn || Date.now(),
+        minutos: datos.minutos,
+        notas: datos.notas || '',
+        valoracion: datos.valoracion || 0,
+        bpm: datos.bpm || null
+      };
+      await DB.put('sesiones', s);
+      await registrarTempo(s.seccionId, s.bpm);
+      await this.descartar();
+      return s;
+    }
+  };
+
+  /** Guarda un tempo alcanzado en una sección (y su historial) */
+  async function registrarTempo(seccionId, bpm) {
+    if (!seccionId || !(bpm > 0)) return;
+    const sec = await DB.get('secciones', seccionId);
+    if (!sec) return;
+    sec.tempoActual = bpm;
+    await DB.put('secciones', sec);
+    await DB.put('tempos', { seccionId, bpm, fecha: Date.now() });
+  }
+
+  /** Datos completos de la cartera (obras + secciones + minutos) */
+  async function cartera() {
+    const [obras, secciones, sesiones] = await Promise.all([DB.all('obras'), DB.all('secciones'), DB.all('sesiones')]);
+    const porObra = {};
+    secciones.forEach(s => (porObra[s.obraId] = porObra[s.obraId] || []).push(s));
+    Object.values(porObra).forEach(l => l.sort((a, b) => (a.orden || 0) - (b.orden || 0)));
+    const minObra = {};
+    sesiones.forEach(s => { if (s.obraId) minObra[s.obraId] = (minObra[s.obraId] || 0) + (s.minutos || 0); });
+    return obras.map(o => {
+      const secs = porObra[o.id] || [];
+      const progreso = progresoObra(o, secs);
+      const est = estadoObra(o, secs);
+      return { obra: o, secciones: secs, progreso, estado: est, minutos: minObra[o.id] || 0, ritmo: ritmoObra(o, progreso, est) };
+    }).sort((a, b) => {
+      const arch = (a.obra.estado === 'archivada') - (b.obra.estado === 'archivada');
+      if (arch) return arch;
+      const fa = a.obra.fechaObjetivo || '9999', fb = b.obra.fechaObjetivo || '9999';
+      return fa.localeCompare(fb) || a.obra.titulo.localeCompare(b.obra.titulo);
+    });
+  }
+
+  /**
+   * Qué estudiar hoy: puntúa cada sección de las obras activas.
+   * Pesan el dominio bajo, que esté marcada como difícil, las tareas pendientes,
+   * lo lejos que está del tempo objetivo, los días sin tocarla y la urgencia de la obra.
+   */
+  function sugerencias(cart, sesiones, n = 3) {
+    const ultima = {};
+    sesiones.forEach(x => { if (x.seccionId && (!ultima[x.seccionId] || x.inicio > ultima[x.seccionId])) ultima[x.seccionId] = x.inicio; });
+    const hoy = new Date();
+    const lista = [];
+    cart.filter(c => c.estado !== 'archivada' && c.estado !== 'lista').forEach(c => {
+      const urg = c.ritmo ? { bien: 0, justa: 2, retrasada: 4, vencida: 3 }[c.ritmo.nivel] : 0;
+      const algunaEmpezada = c.secciones.some(s => faseDe(s) !== 'pendiente');
+      c.secciones.forEach(s => {
+        const fase = faseDe(s);
+        if (fase === 'lista') return;
+        // si la obra ya está en marcha, lo que no se ha empezado espera su turno
+        if (fase === 'pendiente' && algunaEmpezada) return;
+        const motivos = [];
+        let p = (5 - (s.dominio || 0)) * 1.6;
+        if (fase === 'lectura') { const fl = fraccionLeida(s); p += 3 * (1 - fl); motivos.push({ t: 'Leído ' + Math.round(fl * 100) + ' %', c: 'info' }); }
+        if (fase === 'pendiente') motivos.push({ t: 'Sin empezar', c: 'info' });
+        if (s.dificil) { p += 3; motivos.push({ t: 'Difícil', c: 'aviso' }); }
+        const pend = pendientes(s).length;
+        if (pend) { p += Math.min(4, pend * 1.2); motivos.push({ t: pend + (pend === 1 ? ' tarea' : ' tareas'), c: 'acento' }); }
+        if (s.tempoObjetivo > 0 && fase !== 'lectura' && fase !== 'pendiente') {
+          const r = (s.tempoActual || 0) / s.tempoObjetivo;
+          if (r < 1) { p += (1 - r) * 5; motivos.push({ t: Math.round(r * 100) + ' % del tempo', c: 'info' }); }
+        }
+        const dias = ultima[s.id] ? u.diasEntre(ultima[s.id], hoy) : null;
+        if (dias === null) { p += 3; if (fase !== 'pendiente') motivos.push({ t: 'Sin estudiar aún', c: 'info' }); }
+        else if (dias >= 3) { p += Math.min(5, dias * 0.5); motivos.push({ t: 'Hace ' + dias + ' días', c: 'info' }); }
+        else if (dias === 0) p -= 4;
+        if (urg) { p += urg; motivos.push({ t: c.ritmo.nivel === 'justa' ? 'Obra justa de tiempo' : 'Obra retrasada', c: 'mal' }); }
+        if (maestria(s) >= 1 && !pend) p -= 6;
+        lista.push({ c, s, puntos: p, motivos });
+      });
+    });
+    return lista.sort((a, b) => b.puntos - a.puntos).filter(x => x.puntos > 0).slice(0, n);
+  }
+
+  function nombreTempo(bpm) {
+    const t = [[40, 'Grave'], [50, 'Largo'], [60, 'Lento'], [66, 'Adagio'], [76, 'Andante'], [108, 'Moderato'],
+      [120, 'Allegretto'], [156, 'Allegro'], [176, 'Vivace'], [200, 'Presto'], [999, 'Prestissimo']];
+    for (const [lim, n] of t) if (bpm < lim) return n;
+    return 'Prestissimo';
+  }
+
+  A.modelo = {
+    ESTADOS, FASES, estado, indiceFase, faseDe, estadoObra, DOMINIO, COLORES, compasesSeccion, rangoTexto, tieneRango, pendientes, sugerencias,
+    fraccionLeida, compasesLeidos, lecturaObra, maestria, progresoSeccion, progresoObra, ritmoObra, migrar,
+    plan, previstoDia, minutosPorDia, racha, sesion, registrarTempo, cartera, nombreTempo
+  };
+})(window.Atril);
