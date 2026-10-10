@@ -299,7 +299,7 @@
       pintarTempo();
 
       // --------- grabaciones e historial de la sección
-      const [grabs, sesiones] = await Promise.all([DB.byIndex('grabaciones', 'seccionId', sec.id).catch(() => []), DB.byIndex('sesiones', 'obraId', sec.obraId)]);
+      const [grabs, sesiones] = await Promise.all([DB.byIndex('grabaciones', 'obraId', sec.obraId).then(l => l.filter(g => g.seccionId === sec.id)).catch(() => []), DB.byIndex('sesiones', 'obraId', sec.obraId)]);
       if (grabs.length) {
         grabs.sort((a, b) => b.fecha - a.fecha);
         main.appendChild(h('div.seccion-titulo', h('h2', 'Grabaciones')));
@@ -314,6 +314,17 @@
         main.appendChild(h('div.seccion-titulo', h('h2', 'Historial'), h('span.mini.tenue', u.minutos(mias.reduce((a, x) => a + (x.minutosAqui != null ? x.minutosAqui : x.minutos), 0)) + ' en total')));
         main.appendChild(A.obrasUI.historial(mias, [sec]));
       }
+
+      // --------- organizar: dividir o unir
+      const sigH = hermanas[idx + 1];
+      main.appendChild(h('div.seccion-titulo', h('h2', 'Organizar la sección')));
+      main.appendChild(h('section.tarjeta',
+        h('p.mini.tenue', { style: { marginTop: 0 } }, modelo.faseDe(sec) === 'lectura' && sec.nombre === 'Obra completa'
+          ? 'Cuando hayas leído la obra y sepas dónde están las dificultades, divídela en secciones con sentido musical: las letras del director, las frases y, aparte, los pasajes difíciles.'
+          : 'Si dentro de esta sección hay un trozo mucho más difícil, divídela; si dos secciones se trabajan igual, únelas.'),
+        h('div.fila.envuelve', { style: { gap: '8px' } },
+          h('button.btn', { onclick: async () => { const n = await A.dialogos.dividir(sec); if (n) A.app.refrescar(); } }, icono('dividir'), 'Dividir en dos'),
+          sigH ? h('button.btn', { onclick: async () => { if (await A.dialogos.unir(sec)) A.app.refrescar(); } }, icono('unir'), 'Unir con «' + sigH.nombre + '»') : null)));
 
       // --------- navegación entre secciones
       const ant = hermanas[idx - 1], sig = hermanas[idx + 1];

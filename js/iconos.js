@@ -2,6 +2,9 @@
 (function (A) {
   'use strict';
   const P = {
+    libro: '<path d="M4 5a2 2 0 0 1 2-2h5v17H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-5v17h5a2 2 0 0 1 2 2z"/>',
+    dividir: '<path d="M12 3v18"/><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/>',
+    unir: '<path d="M4 12h6M14 12h6"/><path d="M7 8l4 4-4 4M17 8l-4 4 4 4"/>',
     hoy: '<path d="M4 9h16M8 3v4M16 3v4"/><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M9 14l2 2 4-4"/>',
     obras: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
     herramientas: '<path d="M6 20h12M8 20l3.2-15h1.6L16 20"/><path d="M12 13l5-6"/><circle cx="17.5" cy="6.5" r="1.5"/>',

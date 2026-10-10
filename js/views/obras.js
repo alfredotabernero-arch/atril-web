@@ -95,7 +95,8 @@
       const progreso = modelo.progresoObra(obra, secciones);
       const estadoEf = modelo.estadoObra(obra, secciones);
       const ritmo = modelo.ritmoObra(obra, progreso, estadoEf);
-      const lectura = modelo.lecturaObra(secciones);
+      const lectura = modelo.lecturaObra(secciones, obra);
+      const sinSeccion = modelo.compasesSinSeccion(obra, secciones);
       const minTot = sesiones.reduce((a, s) => a + (s.minutos || 0), 0);
       const lunes = u.inicioSemana(new Date()).getTime();
       const minSem = sesiones.filter(s => s.inicio >= lunes).reduce((a, s) => a + (s.minutos || 0), 0);
@@ -109,7 +110,7 @@
         opciones.map(([v, n]) => h('option', { value: v }, n || modelo.estado(v).nombre)));
       selEstado.value = estadoEf;
       selEstado.addEventListener('change', async () => { obra.estado = selEstado.value; await DB.put('obras', obra); A.app.refrescar(); });
-      const hayLectura = secciones.length && lectura.total > 0 && secciones.some(x => ['pendiente', 'lectura'].includes(modelo.faseDe(x)));
+      const hayLectura = secciones.length && lectura.total > 0 && (sinSeccion > 0 || secciones.some(x => ['pendiente', 'lectura'].includes(modelo.faseDe(x))));
       main.appendChild(h('section.hero', { style: { '--c': obra.color } },
         h('div.fila', { style: { alignItems: 'center' } },
           h('div.hero-sub.crece', [obra.compositor, obra.instrumento].filter(Boolean).join(' · ') || 'Sin compositor'),
@@ -132,7 +133,7 @@
         obra.notas ? h('p.hero-notas', obra.notas) : null));
 
       // --------- mapa de la obra
-      if (secciones.some(s => s.desde && s.hasta)) main.appendChild(mapaObra(secciones));
+      if (secciones.some(s => s.desde && s.hasta)) main.appendChild(mapaObra(secciones, obra));
 
       // --------- secciones
       main.appendChild(h('div.seccion-titulo', h('h2', 'Secciones'),
@@ -141,12 +142,16 @@
           h('button.btn.primario.pequeno', { onclick: async () => { const s = await A.dialogos.seccion(id); if (s) A.app.refrescar(); } }, icono('mas'), 'Añadir'))));
       if (!secciones.length) {
         main.appendChild(h('div.tarjeta.vacio.compacto',
-          h('p', { style: { margin: '0 0 12px' } }, 'Divide la obra por compases (por ejemplo, 1ª sección del c. 1 al 34, 2ª del 35 al 60…). Cada sección tendrá sus tareas, observaciones, fotos de la partitura, dominio y tempo.'),
-          h('button.btn.primario', { onclick: async () => { if (await A.dialogos.variasSecciones(id)) A.app.refrescar(); } }, 'Crear secciones por compases')));
+          h('p', { style: { margin: '0 0 6px' } }, h('b', 'Lo recomendable: léela entera primero.'), ' Atril crea una sola sección con toda la obra; cada día apuntas «Hasta el c.» donde llegaste y, cuando la conozcas, la divides en secciones con sentido musical.'),
+          h('button.btn.primario', { style: { marginBottom: '8px' }, onclick: async () => { if (await A.dialogos.obraCompleta(obra)) A.app.refrescar(); } }, icono('libro'), 'Empezar a leer la obra entera'),
+          h('p.mini.tenue', { style: { margin: '6px 0 8px' } }, 'Si ya la conoces, puedes crear directamente sus secciones (por letras de ensayo o frases).'),
+          h('button.btn', { onclick: async () => { if (await A.dialogos.variasSecciones(id)) A.app.refrescar(); } }, 'Crear secciones por compases')));
       } else {
         const lista = h('div.lista-secciones');
         secciones.forEach((s, i) => lista.appendChild(tarjetaSeccion(s, i, secciones, obra, fotosSec[s.id] || [])));
         main.appendChild(lista);
+        if (sinSeccion) main.appendChild(h('p.mini.tenue', { style: { margin: '-4px 6px 12px' } },
+          `Quedan ${sinSeccion} compases de la obra sin sección: cuentan como «Sin empezar» en el progreso.`));
       }
 
       // --------- grabaciones
@@ -167,9 +172,9 @@
   };
 
   /** Barra con todos los compases de la obra, coloreada por la fase de cada sección */
-  function mapaObra(secciones) {
+  function mapaObra(secciones, obra) {
     const conRango = secciones.filter(s => s.desde && s.hasta).sort((a, b) => a.desde - b.desde);
-    const total = Math.max(...conRango.map(s => s.hasta));
+    const total = Math.max(Number(obra && obra.compases) || 0, ...conRango.map(s => s.hasta));
     const barra = h('div.mapa-obra');
     const reglas = h('div.mapa-reglas');
     let cursor = 1;
@@ -192,6 +197,7 @@
       tramo(Math.max(s.desde, cursor), s.hasta, s);
       cursor = Math.max(cursor, s.hasta + 1);
     });
+    if (cursor <= total) tramo(cursor, total, null);
     [1, Math.round(total / 2), total].forEach((c, k) => reglas.appendChild(h('span', { style: { left: (k === 0 ? 0 : (c / total * 100)) + '%' } }, c)));
     return h('section.tarjeta',
       h('div.fila', h('h2.crece', 'Mapa de la obra'), h('span.mini.tenue', total + ' compases')),
@@ -225,7 +231,7 @@
         h('div.barra', { style: { marginTop: '8px', height: '6px' } }, h('i', { style: { width: ancho(prog), background: fase.color } })),
         h('div.fila.envuelve', { style: { gap: '5px', marginTop: '8px' } },
           h('span.chip', { style: { background: `color-mix(in srgb, ${fase.color} 16%, transparent)`, color: fase.color } },
-            fase.id === 'lectura' ? `Leyendo · ${Math.round(modelo.fraccionLeida(s) * 100)} %` : fase.id === 'pendiente' || fase.id === 'lista' ? fase.nombre : `${fase.nombre} · ${pct(prog)}`),
+            fase.id === 'lectura' ? (modelo.fraccionLeida(s) >= 1 ? 'Leída entera · pásala a Montando' : `Leyendo · ${Math.round(modelo.fraccionLeida(s) * 100)} %`) : fase.id === 'pendiente' || fase.id === 'lista' ? fase.nombre : `${fase.nombre} · ${pct(prog)}`),
           fase.id !== 'pendiente' && fase.id !== 'lectura' ? h('span.estrellas', '★'.repeat(dom), h('span', '★'.repeat(5 - dom))) : null,
           pend ? h('span.chip.acento', '✓ ' + pend) : null,
           s.notas ? h('span.chip', icono('nota2'), 'Notas') : null)),

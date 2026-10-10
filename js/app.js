@@ -156,6 +156,8 @@
       h('div.rejilla-2',
         u.campo('Tempo objetivo (BPM)', h('input', { type: 'number', name: 'tempoObjetivo', min: 20, max: 400, value: obra.tempoObjetivo || '' })),
         u.campo('Minutos/semana previstos', h('input', { type: 'number', name: 'minSemana', min: 0, max: 3000, value: obra.minSemana || '' }))),
+      u.campo('Compases de la obra', h('input', { type: 'number', name: 'compases', min: 1, max: 5000, value: obra.compases || '', placeholder: 'p. ej. 74' }),
+        'Con el total, lo que aún no tiene sección cuenta como «Sin empezar» y el progreso no engaña.'),
       h('div.campo', h('span.campo-et', 'Color'), colores),
       u.campo('Notas', h('textarea', { name: 'notas', value: obra.notas || '' })));
     const r = await u.modal(nueva ? 'Nueva obra' : 'Editar obra', cuerpo, [
@@ -223,7 +225,8 @@
     const hermanas = await DB.byIndex('secciones', 'obraId', obraId);
     const ult = hermanas.reduce((m, x) => Math.max(m, x.hasta || 0), 0);
     const rangos = h('textarea', { name: 'rangos', placeholder: '1-34\n35-60\n61-92', style: { minHeight: '110px' } });
-    const total = h('input', { type: 'number', min: 1, placeholder: 'p. ej. 120' });
+    const obraV = await DB.get('obras', obraId);
+    const total = h('input', { type: 'number', min: 1, placeholder: 'p. ej. 120', value: (obraV && obraV.compases) || '' });
     const cada = h('input', { type: 'number', min: 1, placeholder: 'p. ej. 16' });
     const generar = () => {
       const t = Number(total.value), c = Number(cada.value);
@@ -243,6 +246,7 @@
     ]);
     if (!r) return 0;
     const obra = await DB.get('obras', obraId);
+    if (obra && !obra.compases && Number(total.value) > 0) { obra.compases = Number(total.value); await DB.put('obras', obra); }
     let n = hermanas.length, creadas = 0;
     for (const trozo of r.split(/[\n,;]+/)) {
       const m = trozo.trim().match(/^([A-Za-zÑñ]{1,3})?\s*(\d+)\s*[-–a]+\s*(\d+)$/);
@@ -261,7 +265,111 @@
     return creadas;
   }
 
-  A.dialogos = { selectorObra, iniciar: dialogoIniciar, terminar: dialogoTerminar, sesionManual: dialogoSesionManual, obra: dialogoObra, seccion: dialogoSeccion, variasSecciones: dialogoVariasSecciones };
+  /**
+   * Primera lectura: una sola sección con toda la obra, en «Leyendo».
+   * Cada día se apunta «Hasta el c.»; cuando se conoce la obra, se divide en secciones con sentido musical.
+   */
+  async function dialogoObraCompleta(obra) {
+    const inp = h('input', { type: 'number', min: 1, max: 5000, value: obra.compases || '', placeholder: 'p. ej. 74' });
+    const leido = h('input', { type: 'number', min: 0, max: 5000, value: 0 });
+    const r = await u.modal('Leer la obra entera', h('div',
+      h('p', { style: { marginTop: 0 } }, 'Atril crea una sola sección con toda la obra, en «Leyendo». Cada día apuntas hasta qué compás has llegado y, cuando la conozcas, la divides en secciones.'),
+      h('div.rejilla-2', u.campo('Compases de la obra', inp), u.campo('Ya leído hasta el c.', leido, 'Si ya la empezaste'))), [
+      { texto: 'Cancelar', accion: () => null },
+      { texto: 'Crear', clase: 'primario', accion: () => { const n = Number(inp.value); if (!(n > 0)) { u.toast('Indica cuántos compases tiene'); return false; } return { n, l: Math.min(n, Math.max(0, Number(leido.value) || 0)) }; } }
+    ]);
+    if (!r) return null;
+    obra.compases = r.n; await DB.put('obras', obra);
+    const sec = await DB.put('secciones', {
+      obraId: obra.id, nombre: 'Obra completa', letra: '', desde: 1, hasta: r.n, compases: r.n, leidoHasta: r.l, fase: 'lectura',
+      dominio: 0, orden: 0, tareas: [], notas: '', tempoObjetivo: obra.tempoObjetivo || null, trabajada: r.l ? Date.now() : undefined
+    });
+    u.toast('¡A leer! Apunta cada día «Hasta el c.»');
+    return sec;
+  }
+
+  /** Divide una sección en dos por un compás: la segunda empieza en ese compás */
+  async function dialogoDividir(sec) {
+    if (!modelo.tieneRango(sec) || sec.hasta <= sec.desde) { u.toast('Para dividirla, la sección necesita sus compases (desde–hasta)'); return null; }
+    const corte = h('input', { type: 'number', min: sec.desde + 1, max: sec.hasta, value: Math.min(sec.hasta, Math.max(sec.desde + 1, (sec.leidoHasta || 0) + 1 > sec.desde ? (sec.leidoHasta || 0) + 1 : Math.round((sec.desde + sec.hasta) / 2))) });
+    const nombre1 = h('input', { type: 'text', value: sec.nombre === 'Obra completa' ? '' : sec.nombre, placeholder: 'Sección 1' });
+    const nombre2 = h('input', { type: 'text', placeholder: 'Sección 2' });
+    const aviso = h('p.mini.tenue');
+    const pintarAviso = () => { const c = Number(corte.value); aviso.textContent = c > sec.desde && c <= sec.hasta ? `Quedarán: c. ${sec.desde}–${c - 1} y c. ${c}–${sec.hasta}.` : 'Elige un compás dentro de la sección.'; };
+    corte.addEventListener('input', pintarAviso); pintarAviso();
+    const r = await u.modal('Dividir sección', h('div',
+      h('p', { style: { marginTop: 0 } }, 'La sección se parte en dos. Las dos conservan la fase, las estrellas y el tempo; lo leído se reparte solo. Las fotos, tareas, notas e historial se quedan en la primera.'),
+      u.campo('La segunda empieza en el compás', corte), aviso,
+      h('div.rejilla-2', u.campo('Nombre de la primera', nombre1), u.campo('Nombre de la segunda', nombre2))), [
+      { texto: 'Cancelar', accion: () => null },
+      { texto: 'Dividir', clase: 'primario', accion: () => { const c = Number(corte.value); if (!(c > sec.desde && c <= sec.hasta)) { u.toast('Elige un compás dentro de la sección'); return false; } return c; } }
+    ]);
+    if (!r) return null;
+    const hermanas = (await DB.byIndex('secciones', 'obraId', sec.obraId)).sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    const pos = hermanas.findIndex(x => x.id === sec.id);
+    const finAntes = sec.hasta;
+    const leido = sec.leidoHasta;
+    const nueva = {
+      obraId: sec.obraId, nombre: nombre2.value.trim() || ('Sección ' + (pos + 2)), letra: '', desde: r, hasta: finAntes, compases: finAntes - r + 1,
+      fase: sec.fase, dominio: sec.dominio || 0, tempoObjetivo: sec.tempoObjetivo || null, tempoActual: sec.tempoActual || null, dificil: !!sec.dificil,
+      tareas: [], notas: '', orden: pos + 1, trabajada: sec.trabajada
+    };
+    if (modelo.faseDe(sec) === 'lectura') nueva.leidoHasta = Math.max(r - 1, Math.min(finAntes, leido || 0));
+    sec.hasta = r - 1; sec.compases = sec.hasta - sec.desde + 1;
+    if (modelo.faseDe(sec) === 'lectura') sec.leidoHasta = Math.min(sec.hasta, Math.max(sec.desde - 1, leido || 0));
+    sec.nombre = nombre1.value.trim() || (sec.nombre === 'Obra completa' ? 'Sección ' + (pos + 1) : sec.nombre);
+    await DB.put('secciones', sec);
+    hermanas.forEach((x, i) => { if (i > pos) x.orden = i + 1; });
+    for (const x of hermanas.slice(pos + 1)) await DB.put('secciones', x);
+    const creada = await DB.put('secciones', nueva);
+    u.toast('Sección dividida en dos ✓');
+    return creada;
+  }
+
+  /** Une una sección con la siguiente: una sola sección con todo (fotos, tareas, notas, historial) */
+  async function unirConSiguiente(sec) {
+    const hermanas = (await DB.byIndex('secciones', 'obraId', sec.obraId)).sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    const pos = hermanas.findIndex(x => x.id === sec.id), sig = hermanas[pos + 1];
+    if (!sig) { u.toast('No hay una sección siguiente'); return null; }
+    if (!await u.confirmar(`¿Unir «${sec.nombre}» con «${sig.nombre}»? Quedará una sola sección con las fotos, tareas, notas e historial de las dos. Se queda la fase más atrasada y las estrellas más bajas.`, 'Unir')) return null;
+    const i1 = modelo.indiceFase(modelo.faseDe(sec)), i2 = modelo.indiceFase(modelo.faseDe(sig));
+    const leida1 = modelo.fraccionLeida(sec) >= 1;
+    const conRango = modelo.tieneRango(sec) && modelo.tieneRango(sig);
+    // lectura: si la primera está leída entera, se continúa con lo leído de la segunda
+    let leidoHasta = sec.leidoHasta;
+    if (conRango) leidoHasta = leida1 ? (modelo.faseDe(sig) === 'lectura' ? (sig.leidoHasta || sig.desde - 1) : (i2 >= 2 ? sig.hasta : sig.desde - 1)) : (sec.leidoHasta || sec.desde - 1);
+    sec.fase = (i1 <= i2 ? sec : sig).fase || 'pendiente';
+    if (modelo.indiceFase(sec.fase) === 0 && Math.max(i1, i2) > 0) sec.fase = 'lectura';
+    if (conRango) { sec.desde = Math.min(sec.desde, sig.desde); sec.hasta = Math.max(sec.hasta, sig.hasta); sec.compases = sec.hasta - sec.desde + 1; sec.leidoHasta = leidoHasta; }
+    sec.dominio = Math.min(sec.dominio || 0, sig.dominio || 0);
+    sec.tempoActual = Math.min(sec.tempoActual || Infinity, sig.tempoActual || Infinity); if (!isFinite(sec.tempoActual)) sec.tempoActual = null;
+    sec.dificil = !!(sec.dificil || sig.dificil);
+    sec.tareas = (sec.tareas || []).concat(sig.tareas || []);
+    sec.notas = [sec.notas, sig.notas].filter(Boolean).join('\n\n');
+    sec.trabajada = Math.max(sec.trabajada || 0, sig.trabajada || 0) || undefined;
+    await DB.put('secciones', sec);
+    // todo lo de la segunda pasa a la primera
+    for (const f of await DB.byIndex('fotos', 'seccionId', sig.id)) { f.seccionId = sec.id; await DB.put('fotos', f); }
+    for (const t of await DB.byIndex('tempos', 'seccionId', sig.id)) { t.seccionId = sec.id; await DB.put('tempos', t); }
+    for (const g of (await DB.byIndex('grabaciones', 'obraId', sec.obraId)).filter(x => x.seccionId === sig.id)) { g.seccionId = sec.id; await DB.put('grabaciones', g); }
+    for (const s of await DB.byIndex('sesiones', 'obraId', sec.obraId)) {
+      let cambio = false;
+      if (s.seccionId === sig.id) { s.seccionId = sec.id; cambio = true; }
+      if (s.reparto && s.reparto.some(r => r.seccionId === sig.id)) {
+        const m = {}; s.reparto.forEach(r => { const id = r.seccionId === sig.id ? sec.id : r.seccionId; m[id] = (m[id] || 0) + r.minutos; });
+        s.reparto = Object.entries(m).map(([seccionId, minutos]) => ({ seccionId, minutos }));
+        if (s.reparto.length < 2) delete s.reparto;
+        cambio = true;
+      }
+      if (cambio) await DB.put('sesiones', s);
+    }
+    await DB.del('secciones', sig.id);
+    u.toast('Secciones unidas ✓');
+    return sec;
+  }
+
+  A.dialogos = { selectorObra, iniciar: dialogoIniciar, terminar: dialogoTerminar, sesionManual: dialogoSesionManual, obra: dialogoObra, seccion: dialogoSeccion, variasSecciones: dialogoVariasSecciones,
+    obraCompleta: dialogoObraCompleta, dividir: dialogoDividir, unir: unirConSiguiente };
 
   /* ======================= Navegación ======================= */
   const PESTANAS = [

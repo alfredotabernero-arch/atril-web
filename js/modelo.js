@@ -68,11 +68,26 @@
     return f.desde;
   }
 
+  /**
+   * Compases de la obra que todavía no están en ninguna sección (si se conoce el total de la obra).
+   * Cuentan como «sin empezar»: así el progreso no engaña cuando las secciones se van creando poco a poco.
+   */
+  function compasesSinSeccion(obra, secciones) {
+    const total = Number(obra && obra.compases) || 0;
+    if (!total) return 0;
+    const cubierto = new Uint8Array(total + 1);
+    (secciones || []).forEach(s => { if (tieneRango(s)) for (let c = Math.max(1, s.desde); c <= Math.min(total, s.hasta); c++) cubierto[c] = 1; });
+    let n = 0;
+    for (let c = 1; c <= total; c++) if (!cubierto[c]) n++;
+    return n;
+  }
+
   /** Fase de la obra: la manual si no hay secciones; si las hay, la de la sección más atrasada */
   function estadoObra(obra, secciones) {
     if (obra.estado === 'archivada') return 'archivada';
     if (!secciones || !secciones.length) return estado(obra.estado).id;
     const idx = secciones.map(s => indiceFase(faseDe(s)));
+    if (compasesSinSeccion(obra, secciones)) idx.push(0);   // quedan compases sin sección: aún no está toda empezada
     let min = Math.min(...idx);
     if (min === 0 && Math.max(...idx) > 0) min = 1; // si alguna está empezada, la obra está «Leyendo»
     return FASES[min].id;
@@ -81,7 +96,7 @@
   /** Progreso de una obra, 0..1 (ponderado por compases si los hay) */
   function progresoObra(obra, secciones) {
     if (!secciones || !secciones.length) return estado(obra.estado).desde;
-    let tot = 0, acc = 0;
+    let tot = compasesSinSeccion(obra, secciones), acc = 0;
     secciones.forEach(s => {
       const w = compasesSeccion(s) || 1;
       tot += w; acc += w * progresoSeccion(s);
@@ -89,9 +104,9 @@
     return tot ? acc / tot : 0;
   }
 
-  /** Lectura de la obra: compases leídos y totales (solo secciones con compases) */
-  function lecturaObra(secciones) {
-    let leidos = 0, total = 0;
+  /** Lectura de la obra: compases leídos y totales (con los compases aún sin sección, si se conoce el total) */
+  function lecturaObra(secciones, obra) {
+    let leidos = 0, total = compasesSinSeccion(obra, secciones);
     (secciones || []).forEach(s => { const n = compasesSeccion(s); total += n; leidos += compasesLeidos(s); });
     return { leidos, total };
   }
@@ -355,7 +370,7 @@
 
   A.modelo = {
     ESTADOS, FASES, estado, indiceFase, faseDe, estadoObra, DOMINIO, COLORES, compasesSeccion, rangoTexto, tieneRango, pendientes, sugerencias,
-    fraccionLeida, compasesLeidos, lecturaObra, maestria, progresoSeccion, progresoObra, ritmoObra, migrar,
+    fraccionLeida, compasesLeidos, lecturaObra, compasesSinSeccion, maestria, progresoSeccion, progresoObra, ritmoObra, migrar,
     plan, previstoDia, minutosPorDia, racha, sesion, registrarTempo, cartera, nombreTempo, trabajadasHoy
   };
 })(window.Atril);
