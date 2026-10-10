@@ -5,6 +5,18 @@
   const { h } = u;
   const M = audio.Metronomo;
 
+  /*
+   * Micrófono del afinador de «En el atril». Vive fuera de la vista para poder seguir
+   * escuchando al pasar de una sección a otra (si el músico lo quiere: ver «atrilMicAlCambiar»).
+   */
+  let mic = null;   // { stream, fuente, analizador }
+  function soltarMic() {
+    if (!mic) return;
+    try { mic.fuente.disconnect(); } catch (e) {}
+    mic.stream.getTracks().forEach(t => t.stop());
+    mic = null;
+  }
+
   A.vistas.atril = {
     pestana: 'obras',
     pantallaCompleta: true,
@@ -89,7 +101,7 @@
         else {
           const obs = h('textarea.observaciones', { value: sec.notas || '', placeholder: 'Observaciones de esta sección…' });
           let t = null;
-          obs.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { sec.notas = obs.value; DB.put('secciones', sec); }, 500); });
+          obs.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { sec.notas = obs.value; sec.trabajada = Date.now(); DB.put('secciones', sec); }, 500); });
           obs.addEventListener('blur', () => { clearTimeout(t); sec.notas = obs.value; DB.put('secciones', sec); });
           contPanel.appendChild(obs);
         }
@@ -154,7 +166,7 @@
         h('button.btn.pequeno.atril-guardar', {
           onclick: async () => {
             const b = M.activo && M.bpmActual ? Math.round(M.bpmActual) : cfg.bpm;
-            await modelo.registrarTempo(sec.id, b); sec.tempoActual = b;
+            await modelo.registrarTempo(sec.id, b); sec.tempoActual = b; sec.trabajada = Date.now();
             u.toast(`Tempo de «${sec.nombre}»: ${b} BPM ✓`);
           }
         }, '✓ Tempo logrado'));
@@ -170,35 +182,38 @@
         h('div.atril-afin-lectura', notaEl, escalaAfin, centsEl),
         btnMic,
         h('span.atril-afin-la', 'La ' + (la % 1 ? la.toFixed(1) : la) + ' Hz'));
-      let stream = null, fuente = null, analizador = null, raf = 0, buf = null, ultima = 0, alterno = false;
+      let raf = 0, buf = null, ultima = 0, alterno = false;
       const hist = [];
+      function escuchar() {
+        buf = new Float32Array(mic.analizador.fftSize);
+        btnMic.replaceChildren(icono('stop')); btnMic.setAttribute('aria-label', 'Apagar micrófono');
+        centsEl.textContent = 'Escuchando…';
+        cancelAnimationFrame(raf); bucle();
+      }
       async function encenderAfinador() {
         if (M.activo) await M.parar();   // el clic del metrónomo confundiría al afinador
+        let stream;
         try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }
         catch (e) { u.toast('No se pudo usar el micrófono: revisa los permisos'); return; }
         const c = audio.contexto();
-        fuente = c.createMediaStreamSource(stream);
-        analizador = c.createAnalyser(); analizador.fftSize = 4096;
+        const fuente = c.createMediaStreamSource(stream);
+        const analizador = c.createAnalyser(); analizador.fftSize = 4096;
         fuente.connect(analizador);
-        buf = new Float32Array(analizador.fftSize);
-        btnMic.replaceChildren(icono('stop')); btnMic.setAttribute('aria-label', 'Apagar micrófono');
-        centsEl.textContent = 'Escuchando…';
-        bucle();
+        mic = { stream, fuente, analizador };
+        escuchar();
       }
       function apagarAfinador() {
         cancelAnimationFrame(raf); raf = 0;
-        if (fuente) fuente.disconnect();
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        stream = fuente = analizador = null;
+        soltarMic();
         btnMic.replaceChildren(icono('mic')); btnMic.setAttribute('aria-label', 'Activar micrófono');
         indAfin.className = 'atril-afin-ind'; notaEl.textContent = '—'; centsEl.textContent = 'Toca una nota';
       }
-      btnMic.addEventListener('click', () => (stream ? apagarAfinador() : encenderAfinador()));
+      btnMic.addEventListener('click', () => (mic ? apagarAfinador() : encenderAfinador()));
       function bucle() {
         raf = requestAnimationFrame(bucle);
         alterno = !alterno;
-        if (alterno || !analizador) return;
-        analizador.getFloatTimeDomainData(buf);
+        if (alterno || !mic) return;
+        mic.analizador.getFloatTimeDomainData(buf);
         const r = A.pitch.yin(A.pitch.diezmar(buf), audio.contexto().sampleRate / 2, 38, 1400);
         const ahora = performance.now();
         if (r && r.claridad > 0.85) {
@@ -237,6 +252,24 @@
         pintarHerr();
       };
       pintarHerr();
+
+      // ¿venimos de otra sección con el afinador escuchando? Seguir, o preguntar la primera vez
+      if (mic) {
+        const pref = await DB.kvGet('atrilMicAlCambiar', 'preguntar');
+        if (herr !== 'afinador' || pref === 'apagar') soltarMic();
+        else {
+          escuchar();
+          if (pref === 'preguntar') setTimeout(async () => {
+            const r = await u.modal('Afinador encendido',
+              h('p', { style: { margin: 0 } }, '¿Quieres que el afinador siga escuchando cuando pasas de una sección a otra?'), [
+                { texto: 'No, apagarlo', accion: () => 'apagar' },
+                { texto: 'Solo ahora', accion: () => 'ahora' },
+                { texto: 'Siempre', clase: 'primario', accion: () => 'siempre' }]);
+            if (r === 'apagar') { await DB.kvSet('atrilMicAlCambiar', 'apagar'); apagarAfinador(); u.toast('Se apagará al cambiar de sección. Puedes cambiarlo en Ajustes.'); }
+            else if (r === 'siempre') { await DB.kvSet('atrilMicAlCambiar', 'mantener'); u.toast('El afinador seguirá encendido. Puedes cambiarlo en Ajustes.'); }
+          }, 250);
+        }
+      }
       main.appendChild(h('footer.atril-pie', { style: { '--c': color } },
         h('div.atril-herr-barra', selHerr, h('span.crece'), btnDestello),
         filaMetro, filaAfin));
@@ -258,7 +291,10 @@
         clearInterval(tReloj); offSesion(); offs.forEach(f => f());
         document.removeEventListener('keydown', teclas);
         u.pantallaEncendida(false, 'atril');
-        apagarAfinador(); flash.remove();
+        cancelAnimationFrame(raf);
+        // al pasar a otra sección del atril, el micrófono se queda abierto y la nueva vista decide; si no, se apaga
+        if (!(mic && herr === 'afinador' && /^#\/atril\//.test(location.hash))) soltarMic();
+        flash.remove();
       };
     }
   };

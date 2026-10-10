@@ -102,6 +102,14 @@
           });
           main.appendChild(caja);
         }
+        // lo ya trabajado hoy no se propone de nuevo: se recuerda aquí
+        const hechasHoy = modelo.trabajadasHoy(activas, sesiones);
+        if (hechasHoy.length) {
+          const porObra = {};
+          hechasHoy.forEach(({ c, s }) => (porObra[c.obra.titulo] = porObra[c.obra.titulo] || []).push((s.letra ? s.letra + ' · ' : '') + s.nombre));
+          main.appendChild(h('p.hoy-ya', icono('check'), h('span', 'Hoy ya has trabajado: ',
+            Object.entries(porObra).map(([t, l], i) => [i ? '; ' : '', h('b', l.join(', ')), ' (' + t + ')']).flat())));
+        }
 
         // --------- obras con urgencia
         const urgentes = activas.filter(c => c.ritmo && c.ritmo.nivel !== 'bien').sort((a, b) => a.ritmo.quedan - b.ritmo.quedan);

@@ -5,6 +5,8 @@
   const { h } = u;
 
   const pct = x => Math.round(x * 100) + ' %';
+  // ancho de barra para CSS (sin espacio: «20 %» no es un ancho válido y la barra salía llena)
+  const ancho = x => Math.round(Math.max(0, Math.min(1, x || 0)) * 1000) / 10 + '%';
   /** Colores del dominio 0..5 (rojo → verde) */
   const COLOR_DOMINIO = ['var(--dom-0)', '#FF5A5F', '#FF8A3D', '#F5B400', '#8BCF3F', '#22C27A'];
   A.COLOR_DOMINIO = COLOR_DOMINIO;
@@ -50,7 +52,7 @@
               h('div.obra-card-titulo', o.titulo),
               h('div.obra-card-sub', [o.compositor, o.instrumento].filter(Boolean).join(' · ') || ' ')),
             h('div.obra-card-pct', Math.round(c.progreso * 100), h('small', '%'))),
-          h('div.barra.blanca', h('i', { style: { width: pct(c.progreso) } })),
+          h('div.barra.blanca', h('i', { style: { width: ancho(c.progreso) } })),
           h('div.fila.envuelve', { style: { marginTop: '12px', gap: '6px' } },
             h('span.chip.blanco', modelo.estado(c.estado).nombre),
             c.ritmo && c.ritmo.nivel !== 'bien' ? chipRitmo(c.ritmo, true) : null,
@@ -113,7 +115,7 @@
           h('div.hero-sub.crece', [obra.compositor, obra.instrumento].filter(Boolean).join(' · ') || 'Sin compositor'),
           selEstado),
         h('div.hero-pct', { style: { marginTop: '6px' } }, Math.round(progreso * 100), h('small', '% completado')),
-        h('div.barra.blanca.gruesa', h('i', { style: { width: pct(progreso) } })),
+        h('div.barra.blanca.gruesa', h('i', { style: { width: ancho(progreso) } })),
         hayLectura ? h('p.hero-ritmo', h('span.chip.blanco', '📖 Lectura'), ` ${lectura.leidos} de ${lectura.total} compases leídos (${Math.round(lectura.leidos / lectura.total * 100)} %)`) : null,
         !secciones.length && estadoEf === 'lectura' ? h('p.hero-ritmo', 'Añade secciones con sus compases para que la lectura cuente en el progreso.') : null,
         ritmo ? h('p.hero-ritmo', chipRitmo(ritmo, true), ' ',
@@ -220,10 +222,10 @@
       h('div.crece',
         h('div.sec-nombre', s.dificil ? h('span', { title: 'Pasaje difícil' }, '⚡ ') : null, s.nombre),
         h('div.sec-meta', [modelo.rangoTexto(s), tempo].filter(Boolean).join(' · ')),
-        h('div.barra', { style: { marginTop: '8px', height: '6px' } }, h('i', { style: { width: pct(prog), background: obra.color } })),
+        h('div.barra', { style: { marginTop: '8px', height: '6px' } }, h('i', { style: { width: ancho(prog), background: fase.color } })),
         h('div.fila.envuelve', { style: { gap: '5px', marginTop: '8px' } },
           h('span.chip', { style: { background: `color-mix(in srgb, ${fase.color} 16%, transparent)`, color: fase.color } },
-            fase.id === 'lectura' ? `Leyendo · ${Math.round(modelo.fraccionLeida(s) * 100)} %` : fase.nombre),
+            fase.id === 'lectura' ? `Leyendo · ${Math.round(modelo.fraccionLeida(s) * 100)} %` : fase.id === 'pendiente' || fase.id === 'lista' ? fase.nombre : `${fase.nombre} · ${pct(prog)}`),
           fase.id !== 'pendiente' && fase.id !== 'lectura' ? h('span.estrellas', '★'.repeat(dom), h('span', '★'.repeat(5 - dom))) : null,
           pend ? h('span.chip.acento', '✓ ' + pend) : null,
           s.notas ? h('span.chip', icono('nota2'), 'Notas') : null)),
@@ -239,7 +241,10 @@
     return h('section.tarjeta', h('ul.lista', sesiones.slice(0, 30).map(s => h('li', h('div.item',
       h('div.fecha-caja', h('b', new Date(s.inicio).getDate()), h('span', u.MESES[new Date(s.inicio).getMonth()])),
       h('div.crece',
-        h('div', h('b', u.minutos(s.minutos)), s.seccionId && nombreSec[s.seccionId] ? h('span.tenue', ' · ' + nombreSec[s.seccionId]) : null,
+        h('div', h('b', u.minutos(s.minutosAqui != null ? s.minutosAqui : s.minutos)),
+          s.reparto && s.minutosAqui == null ? h('span.tenue', ' · ' + s.reparto.map(r => (nombreSec[r.seccionId] || 'sección') + ' ' + r.minutos + ' min').join(', '))
+            : s.seccionId && nombreSec[s.seccionId] ? h('span.tenue', ' · ' + nombreSec[s.seccionId]) : null,
+          s.reparto && s.minutosAqui != null ? h('span.tenue', ` · de una sesión de ${u.minutos(s.minutos)}`) : null,
           s.bpm ? h('span.tenue', ` · ♩ ${s.bpm}`) : null, s.valoracion ? h('span.estrellas', ' ' + '★'.repeat(s.valoracion)) : null),
         s.notas ? h('div.mini.tenue', { style: { whiteSpace: 'pre-wrap' } }, s.notas) : h('div.mini.tenue', u.hora(s.inicio))),
       h('button.btn-icono', {

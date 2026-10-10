@@ -774,3 +774,10 @@ input.blanco { accent-color: #fff; }
 .aviso-ios > span { grid-column: 1; }
 .aviso-ios .btn-icono { grid-column: 2; grid-row: 1 / span 2; align-self: start; color: #fff; background: rgba(255,255,255,.18); }
 .aviso-ios .ios-share { display: inline-block; background: rgba(255,255,255,.22); border-radius: 6px; padding: 0 5px; }
+
+/* Terminar sesión: tiempo repartido por secciones */
+.reparto { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.reparto-fila { display: flex; align-items: center; gap: 8px; background: var(--superficie-2); border-radius: 12px; padding: 6px 10px; font-weight: 700; }
+.reparto-fila input { width: 72px; text-align: center; }
+.hoy-ya { display: flex; gap: 8px; align-items: flex-start; margin: 2px 4px 14px; font-size: .88rem; color: var(--tinta-2, inherit); opacity: .9; }
+.hoy-ya svg { width: 18px; height: 18px; flex: none; color: #22C27A; margin-top: 1px; }

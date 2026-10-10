@@ -160,7 +160,7 @@
 
   /* ---------------- Sesión de estudio en curso ---------------- */
   const sesion = {
-    estado: null, // {obraId, seccionId, inicio, pausadaEn, pausas}
+    estado: null, // {obraId, seccionId, inicio, pausadaEn, pausas, tramos: {seccionId: seg}, tramoDesde}
     _ev: new Set(),
     on(f) { this._ev.add(f); return () => this._ev.delete(f); },
     _emit() { this._ev.forEach(f => f(this.estado)); },
@@ -173,25 +173,53 @@
       const fin = e.pausadaEn || Date.now();
       return (fin - e.inicio - (e.pausas || 0)) / 1000;
     },
+    /** Suma al tramo de la sección actual el tiempo desde la última anotación */
+    _acumular(ahora = Date.now()) {
+      const e = this.estado;
+      if (!e) return;
+      e.tramos = e.tramos || {};
+      if (e.tramoDesde && !e.pausadaEn) {
+        const k = e.seccionId || '';
+        e.tramos[k] = (e.tramos[k] || 0) + Math.max(0, (ahora - e.tramoDesde) / 1000);
+      }
+      e.tramoDesde = e.pausadaEn ? null : ahora;
+    },
+    /**
+     * Tiempo de la sesión repartido por secciones: [{seccionId, seg}], de más a menos.
+     * Solo cuentan las secciones con al menos 20 segundos.
+     */
+    reparto() {
+      const e = this.estado;
+      if (!e) return [];
+      const t = Object.assign({}, e.tramos || {});
+      if (e.tramoDesde && !e.pausadaEn) { const k = e.seccionId || ''; t[k] = (t[k] || 0) + (Date.now() - e.tramoDesde) / 1000; }
+      if (!e.tramos && !e.tramoDesde) t[e.seccionId || ''] = this.segundos();   // sesiones de versiones anteriores
+      return Object.entries(t).filter(([, seg]) => seg >= 20).map(([seccionId, seg]) => ({ seccionId: seccionId || null, seg })).sort((a, b) => b.seg - a.seg);
+    },
     async iniciar(obraId, seccionId) {
       if (this.estado) return;
-      this.estado = { obraId: obraId || null, seccionId: seccionId || null, inicio: Date.now(), pausadaEn: null, pausas: 0 };
+      const ahora = Date.now();
+      this.estado = { obraId: obraId || null, seccionId: seccionId || null, inicio: ahora, pausadaEn: null, pausas: 0, tramos: {}, tramoDesde: ahora };
       await this._guardar();
     },
     async cambiar(obraId, seccionId) {
       if (!this.estado) return;
+      this._acumular();
       this.estado.obraId = obraId || null; this.estado.seccionId = seccionId || null;
       await this._guardar();
     },
     async pausar() {
       if (!this.estado || this.estado.pausadaEn) return;
-      this.estado.pausadaEn = Date.now();
+      const ahora = Date.now();
+      this._acumular(ahora);
+      this.estado.pausadaEn = ahora; this.estado.tramoDesde = null;
       await this._guardar();
     },
     async reanudar() {
       if (!this.estado || !this.estado.pausadaEn) return;
       this.estado.pausas += Date.now() - this.estado.pausadaEn;
       this.estado.pausadaEn = null;
+      this.estado.tramoDesde = Date.now();
       await this._guardar();
     },
     async descartar() { this.estado = null; await DB.kvSet('sesionActiva', null); this._emit(); },
@@ -209,8 +237,15 @@
         valoracion: datos.valoracion || 0,
         bpm: datos.bpm || null
       };
+      // varias secciones en la misma sesión: cada una con sus minutos; la principal es la de más tiempo
+      const rep = (datos.reparto || []).filter(r => r.seccionId && r.minutos > 0);
+      if (rep.length > 1) {
+        s.reparto = rep.map(r => ({ seccionId: r.seccionId, minutos: r.minutos }));
+        s.seccionId = rep.slice().sort((a, b) => b.minutos - a.minutos)[0].seccionId;
+        s.minutos = rep.reduce((a, r) => a + r.minutos, 0) + (datos.minutosGeneral || 0);
+      }
       await DB.put('sesiones', s);
-      await registrarTempo(s.seccionId, s.bpm);
+      await registrarTempo(datos.bpmSeccionId || s.seccionId, s.bpm);
       await this.descartar();
       return s;
     }
@@ -222,6 +257,7 @@
     const sec = await DB.get('secciones', seccionId);
     if (!sec) return;
     sec.tempoActual = bpm;
+    sec.trabajada = Date.now();
     await DB.put('secciones', sec);
     await DB.put('tempos', { seccionId, bpm, fecha: Date.now() });
   }
@@ -252,9 +288,27 @@
    * Pesan el dominio bajo, que esté marcada como difícil, las tareas pendientes,
    * lo lejos que está del tempo objetivo, los días sin tocarla y la urgencia de la obra.
    */
-  function sugerencias(cart, sesiones, n = 3) {
+  /** Última vez que se trabajó cada sección: sesiones (también repartidas) y cambios hechos a mano */
+  function ultimasVeces(cart, sesiones) {
     const ultima = {};
-    sesiones.forEach(x => { if (x.seccionId && (!ultima[x.seccionId] || x.inicio > ultima[x.seccionId])) ultima[x.seccionId] = x.inicio; });
+    const anotar = (id, t) => { if (id && t && (!ultima[id] || t > ultima[id])) ultima[id] = t; };
+    sesiones.forEach(x => {
+      anotar(x.seccionId, x.inicio);
+      (x.reparto || []).forEach(r => anotar(r.seccionId, x.inicio));
+    });
+    cart.forEach(c => c.secciones.forEach(s => anotar(s.id, s.trabajada)));
+    return ultima;
+  }
+
+  /** Secciones trabajadas hoy (para «Hoy ya has trabajado…») */
+  function trabajadasHoy(cart, sesiones) {
+    const ultima = ultimasVeces(cart, sesiones), hoy = new Date(), out = [];
+    cart.forEach(c => c.secciones.forEach(s => { if (ultima[s.id] && u.diasEntre(ultima[s.id], hoy) === 0) out.push({ c, s }); }));
+    return out;
+  }
+
+  function sugerencias(cart, sesiones, n = 3) {
+    const ultima = ultimasVeces(cart, sesiones);
     const hoy = new Date();
     const lista = [];
     cart.filter(c => c.estado !== 'archivada' && c.estado !== 'lista').forEach(c => {
@@ -277,15 +331,19 @@
           if (r < 1) { p += (1 - r) * 5; motivos.push({ t: Math.round(r * 100) + ' % del tempo', c: 'info' }); }
         }
         const dias = ultima[s.id] ? u.diasEntre(ultima[s.id], hoy) : null;
-        if (dias === null) { p += 3; if (fase !== 'pendiente') motivos.push({ t: 'Sin estudiar aún', c: 'info' }); }
+        if (dias === null) { p += 3; if (fase !== 'pendiente') motivos.push({ t: 'Sin sesiones aún', c: 'info' }); }
         else if (dias >= 3) { p += Math.min(5, dias * 0.5); motivos.push({ t: 'Hace ' + dias + ' días', c: 'info' }); }
-        else if (dias === 0) p -= 4;
+        else if (dias === 1) motivos.push({ t: 'Ayer', c: 'info' });
+        else if (dias === 0) motivos.push({ t: 'Ya trabajada hoy', c: 'info' });
         if (urg) { p += urg; motivos.push({ t: c.ritmo.nivel === 'justa' ? 'Obra justa de tiempo' : 'Obra retrasada', c: 'mal' }); }
         if (maestria(s) >= 1 && !pend) p -= 6;
-        lista.push({ c, s, puntos: p, motivos });
+        lista.push({ c, s, puntos: p, motivos, hoy: dias === 0 });
       });
     });
-    return lista.sort((a, b) => b.puntos - a.puntos).filter(x => x.puntos > 0).slice(0, n);
+    const orden = lista.sort((a, b) => b.puntos - a.puntos).filter(x => x.puntos > 0);
+    // lo trabajado hoy no se vuelve a proponer, salvo que no quede nada más
+    const pendientesHoy = orden.filter(x => !x.hoy);
+    return (pendientesHoy.length ? pendientesHoy : orden).slice(0, n);
   }
 
   function nombreTempo(bpm) {
@@ -298,6 +356,6 @@
   A.modelo = {
     ESTADOS, FASES, estado, indiceFase, faseDe, estadoObra, DOMINIO, COLORES, compasesSeccion, rangoTexto, tieneRango, pendientes, sugerencias,
     fraccionLeida, compasesLeidos, lecturaObra, maestria, progresoSeccion, progresoObra, ritmoObra, migrar,
-    plan, previstoDia, minutosPorDia, racha, sesion, registrarTempo, cartera, nombreTempo
+    plan, previstoDia, minutosPorDia, racha, sesion, registrarTempo, cartera, nombreTempo, trabajadasHoy
   };
 })(window.Atril);

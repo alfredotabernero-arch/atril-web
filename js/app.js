@@ -53,6 +53,10 @@
     const minReal = Math.max(1, Math.round(modelo.sesion.segundos() / 60));
     const sel = await selectorObra(e.obraId, e.seccionId);
     const sec = e.seccionId ? await DB.get('secciones', e.seccionId) : null;
+    // ¿se han estudiado varias secciones en esta sesión? (al pasar de una a otra en «En el atril»)
+    const tramos = modelo.sesion.reparto().filter(t => t.seccionId);
+    const secsTramo = await Promise.all(tramos.map(t => DB.get('secciones', t.seccionId)));
+    const varias = tramos.length > 1;
     let valoracion = 0;
     const estrellas = h('div.dominio');
     const pintar = () => Array.from(estrellas.children).forEach((b, i) => b.classList.toggle('on', i < valoracion));
@@ -60,11 +64,30 @@
       estrellas.appendChild(h('button', { type: 'button', 'aria-label': i + ' de 5', onclick: () => { valoracion = valoracion === i ? 0 : i; pintar(); } }, '★'));
     }
     const ultimoBpm = A.audio.Metronomo.bpmActual;
+    let bloqueQue, entradasReparto = [];
+    const totalEl = h('b');
+    if (varias) {
+      // minutos por sección, redondeados para que sumen el total real
+      let mins = tramos.map(t => Math.max(1, Math.round(t.seg / 60)));
+      const dif = minReal - mins.reduce((a, x) => a + x, 0);
+      if (dif) mins[0] = Math.max(1, mins[0] + dif);
+      entradasReparto = tramos.map((t, i) => h('input', { type: 'number', min: 0, max: 600, value: mins[i], 'aria-label': 'Minutos' }));
+      const sumar = () => { totalEl.textContent = u.minutos(entradasReparto.reduce((a, x) => a + (Number(x.value) || 0), 0)); };
+      entradasReparto.forEach(x => x.addEventListener('input', sumar));
+      sumar();
+      bloqueQue = h('div.campo', h('span.campo-et', 'Tiempo en cada sección'),
+        h('div.reparto', tramos.map((t, i) => {
+          const s = secsTramo[i];
+          return h('label.reparto-fila', h('span.crece', s ? (s.letra ? s.letra + ' · ' : '') + s.nombre : 'Sección'), entradasReparto[i], h('span.tenue', 'min'));
+        })),
+        h('small.campo-ayuda', 'Cada sección guarda su tiempo y queda como trabajada hoy. Corrígelo si hace falta.'));
+    } else {
+      bloqueQue = h('div', u.campo('Minutos de estudio', h('input', { type: 'number', name: 'minutos', min: 1, max: 600, value: minReal })), sel.nodo);
+    }
     const cuerpo = h('div',
-      h('p.tenue', 'Has estudiado ', h('b', u.minutos(minReal)), '.'),
-      u.campo('Minutos de estudio', h('input', { type: 'number', name: 'minutos', min: 1, max: 600, value: minReal })),
-      sel.nodo,
-      u.campo('Tempo alcanzado (BPM)', h('input', {
+      h('p.tenue', 'Has estudiado ', varias ? totalEl : h('b', u.minutos(minReal)), varias ? ' en ' + tramos.length + ' secciones.' : '.'),
+      bloqueQue,
+      u.campo(varias && sec ? 'Tempo alcanzado en «' + sec.nombre + '» (BPM)' : 'Tempo alcanzado (BPM)', h('input', {
         type: 'number', name: 'bpm', min: 20, max: 400, placeholder: sec && sec.tempoActual ? 'Último: ' + sec.tempoActual : 'Opcional',
         value: ultimoBpm && e.seccionId ? ultimoBpm : undefined
       }), 'Se guarda como tempo actual de la sección.'),
@@ -74,10 +97,16 @@
     const r = await u.modal('Terminar sesión', cuerpo, [
       { texto: 'Descartar', clase: 'peligro', accion: async () => (await u.confirmar('¿Descartar esta sesión sin guardarla?', 'Descartar', 'peligro')) ? 'descartar' : false },
       { texto: 'Seguir', accion: () => null },
-      { texto: 'Guardar', clase: 'primario', accion: () => Object.assign(u.leerForm(cuerpo), sel.valor(), { valoracion }) }
+      { texto: 'Guardar', clase: 'primario', accion: () => Object.assign(u.leerForm(cuerpo), varias ? { obraId: e.obraId } : sel.valor(), { valoracion }) }
     ]);
     if (r === 'descartar') { await modelo.sesion.descartar(); u.toast('Sesión descartada'); return; }
     if (!r) return;
+    if (varias) {
+      r.reparto = tramos.map((t, i) => ({ seccionId: t.seccionId, minutos: Math.max(0, Math.round(Number(entradasReparto[i].value) || 0)) }));
+      r.minutos = r.reparto.reduce((a, x) => a + x.minutos, 0) || minReal;
+      r.bpmSeccionId = e.seccionId;
+      // la sección en la que se termina se guarda con el tempo; el resto ya tienen su tiempo
+    }
     if (!(r.minutos > 0)) r.minutos = minReal;
     await modelo.sesion.terminar(r);
     u.toast('Sesión guardada: ' + u.minutos(r.minutos));

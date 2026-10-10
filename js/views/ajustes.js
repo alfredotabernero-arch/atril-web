@@ -42,6 +42,15 @@
         h('button.enlace', { onclick: () => A.bienvenida.ver() }, 'Ver la pantalla de bienvenida'),
         h('p.mini.tenue', { style: { margin: '10px 0 0' } }, 'El La de referencia (430–445 Hz) se cambia en Herramientas › Afinador.')));
 
+      // ---------- «En el atril»
+      const micPref = await DB.kvGet('atrilMicAlCambiar', 'preguntar');
+      const segMic = h('div.segmentado', [['preguntar', 'Preguntar'], ['mantener', 'Mantener'], ['apagar', 'Apagar']].map(([v, t]) =>
+        h('button' + (micPref === v ? '.on' : ''), { type: 'button', onclick: async () => { await DB.kvSet('atrilMicAlCambiar', v); A.app.refrescar(); } }, t)));
+      main.appendChild(h('section.tarjeta', h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#6C4CF5' } }, A.icono('afinador')), h('h2', 'En el atril')),
+        h('p.mini', { style: { marginTop: 0 } }, 'Si tienes el afinador escuchando y pasas a otra sección, el micrófono:'),
+        segMic,
+        h('p.mini.tenue', { style: { margin: '8px 0 0' } }, '«Preguntar» te lo consulta la primera vez. Al salir de «En el atril» el micrófono se apaga siempre.')));
+
       // ---------- copia de seguridad
       const fichero = h('input', { type: 'file', accept: '.zip,.json,application/zip,application/json', style: { display: 'none' } });
       fichero.addEventListener('change', async () => {

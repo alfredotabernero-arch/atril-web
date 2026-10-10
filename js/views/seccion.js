@@ -8,7 +8,7 @@
   function tareasUI(sec, opciones = {}) {
     const caja = h('div.tareas');
     let verHechas = false;
-    const guardar = async () => { await DB.put('secciones', sec); opciones.alCambiar && opciones.alCambiar(); pintar(); };
+    const guardar = async () => { sec.trabajada = Date.now(); await DB.put('secciones', sec); opciones.alCambiar && opciones.alCambiar(); pintar(); };
     const entrada = h('input', { type: 'text', placeholder: opciones.placeholder || 'Nueva tarea: p. ej. «Digitación c. 12»', 'aria-label': 'Nueva tarea' });
     const anadir = async () => {
       const t = entrada.value.trim();
@@ -62,7 +62,7 @@
     for (let i = 1; i <= 5; i++) {
       caja.appendChild(h('button', {
         type: 'button', 'aria-label': 'Dominio ' + i,
-        onclick: async () => { sec.dominio = sec.dominio === i ? i - 1 : i; await DB.put('secciones', sec); pintar(); alCambiar && alCambiar(); }
+        onclick: async () => { sec.dominio = sec.dominio === i ? i - 1 : i; sec.trabajada = Date.now(); await DB.put('secciones', sec); pintar(); alCambiar && alCambiar(); }
       }, '★'));
     }
     caja.appendChild(et);
@@ -76,7 +76,7 @@
    */
   function faseUI(sec, alCambiar, opciones = {}) {
     const caja = h('div.fase-ui' + (opciones.compacto ? '.compacto' : ''));
-    const guardar = async () => { await DB.put('secciones', sec); alCambiar && alCambiar(); pintar(); };
+    const guardar = async () => { sec.trabajada = Date.now(); await DB.put('secciones', sec); alCambiar && alCambiar(); pintar(); };
     const n = modelo.compasesSeccion(sec);
     const conRango = modelo.tieneRango(sec);
 
@@ -111,7 +111,7 @@
           if (desde !== rango) rango.value = sec.leidoHasta;
           pintarTxt();
           clearTimeout(fijar.t);
-          fijar.t = setTimeout(async () => { await DB.put('secciones', sec); alCambiar && alCambiar(); }, 300);
+          fijar.t = setTimeout(async () => { sec.trabajada = Date.now(); await DB.put('secciones', sec); alCambiar && alCambiar(); }, 300);
           if (sec.leidoHasta >= sec.hasta && !fijar.avisado) { fijar.avisado = true; u.toast('Sección leída entera: pásala a «Montando» cuando quieras'); }
         };
         num.addEventListener('change', () => fijar(Number(num.value), num));
@@ -128,7 +128,7 @@
         const rango = h('input', { type: 'range', min: 0, max: 100, step: 5, value: sec.leidoPct || 0, 'aria-label': 'Porcentaje leído' });
         rango.addEventListener('input', () => {
           sec.leidoPct = Number(rango.value); pintarTxt();
-          clearTimeout(rango.t); rango.t = setTimeout(async () => { await DB.put('secciones', sec); alCambiar && alCambiar(); }, 300);
+          clearTimeout(rango.t); rango.t = setTimeout(async () => { sec.trabajada = Date.now(); await DB.put('secciones', sec); alCambiar && alCambiar(); }, 300);
         });
         ctrl = h('div', rango, h('p.mini.tenue', { style: { margin: '2px 0 0' } }, 'Pon los compases de la sección (desde–hasta) para contar la lectura compás a compás.'));
       }
@@ -260,7 +260,7 @@
       obs.addEventListener('input', () => {
         estadoGuardado.textContent = '…';
         clearTimeout(t);
-        t = setTimeout(async () => { sec.notas = obs.value; await DB.put('secciones', sec); estadoGuardado.textContent = 'Guardado ✓'; }, 600);
+        t = setTimeout(async () => { sec.notas = obs.value; sec.trabajada = Date.now(); await DB.put('secciones', sec); estadoGuardado.textContent = 'Guardado ✓'; }, 600);
       });
       main.appendChild(h('section.tarjeta',
         h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#F5B400' } }, icono('nota2')), h('h2.crece', 'Observaciones'), estadoGuardado),
@@ -278,7 +278,7 @@
       const cambiarTempo = async d => {
         const b = u.clamp((sec.tempoActual || sec.tempoObjetivo || 80) + d, 20, 400);
         await modelo.registrarTempo(sec.id, b);
-        sec.tempoActual = b; pintarTempo();
+        sec.tempoActual = b; sec.trabajada = Date.now(); pintarTempo();
       };
       const dificil = h('input', { type: 'checkbox', checked: !!sec.dificil });
       dificil.addEventListener('change', async () => { sec.dificil = dificil.checked; await DB.put('secciones', sec); });
@@ -305,9 +305,13 @@
         main.appendChild(h('div.seccion-titulo', h('h2', 'Grabaciones')));
         main.appendChild(h('section.tarjeta', h('ul.lista', grabs.map(g => A.grabaciones.filaGrabacion(g, [sec])))));
       }
-      const mias = sesiones.filter(x => x.seccionId === sec.id).sort((a, b) => b.inicio - a.inicio);
+      // las sesiones repartidas entre varias secciones cuentan aquí solo sus minutos de esta sección
+      const mias = sesiones.map(x => {
+        if (x.reparto) { const r = x.reparto.find(y => y.seccionId === sec.id); return r ? Object.assign({}, x, { minutosAqui: r.minutos }) : null; }
+        return x.seccionId === sec.id ? x : null;
+      }).filter(Boolean).sort((a, b) => b.inicio - a.inicio);
       if (mias.length) {
-        main.appendChild(h('div.seccion-titulo', h('h2', 'Historial'), h('span.mini.tenue', u.minutos(mias.reduce((a, x) => a + x.minutos, 0)) + ' en total')));
+        main.appendChild(h('div.seccion-titulo', h('h2', 'Historial'), h('span.mini.tenue', u.minutos(mias.reduce((a, x) => a + (x.minutosAqui != null ? x.minutosAqui : x.minutos), 0)) + ' en total')));
         main.appendChild(A.obrasUI.historial(mias, [sec]));
       }
 
