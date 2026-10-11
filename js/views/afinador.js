@@ -17,10 +17,10 @@
 
     // ---------- La de referencia
     const laTxt = h('b');
-    const laRange = h('input', { type: 'range', min: 430, max: 445, step: 0.5, value: la, 'aria-label': 'La de referencia' });
+    const laRange = h('input', { type: 'range', min: 430, max: 445, step: 0.5, value: la, 'aria-label': pitch.nombreLa() + ' de referencia' });
     const setLa = v => {
       la = u.clamp(Math.round(v * 2) / 2, 430, 445);
-      laTxt.textContent = 'La = ' + (la % 1 ? la.toFixed(1) : la) + ' Hz';
+      laTxt.textContent = pitch.nombreLa() + ' = ' + (la % 1 ? la.toFixed(1) : la) + ' Hz';
       laRange.value = la;
       A.la.set(la);
       pintarCuerdas();
@@ -51,7 +51,7 @@
       def.cuerdas.forEach((n, i) => {
         const m = pitch.midiDeNombre(n);
         const f = pitch.frecMidi(m, la);
-        cuerdas.appendChild(h('button.cuerda', { type: 'button', 'data-midi': m, title: 'Escuchar ' + n, onclick: () => audio.tono(f, 2.2) },
+        cuerdas.appendChild(h('button.cuerda', { type: 'button', 'data-midi': m, title: 'Escuchar ' + pitch.nombreTexto(n), onclick: () => audio.tono(f, 2.2) },
           pitch.soloNombre(m), h('small', `${i + 1}ª · ${f.toFixed(1)}`)));
       });
       if (!def.cuerdas.length) cuerdas.appendChild(h('p.mini.tenue', 'Detecta cualquier nota. Elige un instrumento para ver sus cuerdas y escuchar cada una.'));
@@ -67,7 +67,7 @@
       laRange,
       h('div.segmentado', { style: { marginTop: '8px' } }, [430, 435, 440, 442, 443, 445].map(v =>
         h('button', { type: 'button', onclick: () => setLa(v) }, v))),
-      h('p.mini.tenue', { style: { margin: '8px 0 0' } }, '440 Hz es el estándar; muchas orquestas afinan a 442. Este La se usa también en la nota pedal.')));
+      h('p.mini.tenue', { style: { margin: '8px 0 0' } }, '440 Hz es el estándar; muchas orquestas afinan a 442. Este ' + pitch.nombreLa() + ' se usa también en la nota pedal.')));
     main.appendChild(h('section.tarjeta',
       h('h2', 'Instrumento'),
       selInstr, cuerdas));

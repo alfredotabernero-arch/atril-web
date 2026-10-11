@@ -208,9 +208,17 @@
     }
     const repintar = () => { pintarEstado(); pintarAmbientes(); pintarMusica(); };
     const off = R.on(repintar);
+    // relámpagos de la tormenta: un destello blanco antes de cada trueno cercano
+    const destello = h('div.relax-destello', { 'aria-hidden': 'true' });
+    document.body.appendChild(destello);
+    const offRayo = R.onRelampago(f => {
+      if (document.hidden) return;
+      destello.style.setProperty('--fuerza', (0.35 + 0.5 * f).toFixed(2));
+      destello.classList.remove('on'); void destello.offsetWidth; destello.classList.add('on');
+    });
     const t = setInterval(pintarEstado, 1000);
     repintar();
 
-    return () => { off(); clearInterval(t); pararResp(); guardarSel(); };
+    return () => { off(); offRayo(); destello.remove(); clearInterval(t); pararResp(); guardarSel(); };
   };
 })(window.Atril);

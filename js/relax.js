@@ -82,6 +82,68 @@
   function filtro(tipo, f, q = 0.7) { const x = ctx.createBiquadFilter(); x.type = tipo; x.frequency.value = f; x.Q.value = q; return x; }
   function cadena(...nodos) { for (let i = 0; i < nodos.length - 1; i++) nodos[i].connect(nodos[i + 1]); return nodos[nodos.length - 1]; }
 
+  /* ---------------- truenos ----------------
+   * Cada trueno se genera nuevo: un estallido seco (si está cerca) y un retumbo que rueda
+   * en varios golpes y se apaga. El retumbo lleva graves, pero también medios (200–800 Hz)
+   * para que se oiga en el altavoz del móvil, que apenas reproduce los graves. */
+  function trueno(d, sal, vivos) {
+    const sr = ctx.sampleRate;
+    const dur = 5.5 + d * 3 + Math.random() * 2;
+    const golpes = [];
+    const k = 3 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < k; i++) golpes.push({ t: (i === 0 ? 0 : azar(0.2, dur * 0.55)) + (d * 0.3), a: azar(0.45, 1) * (i === 0 ? 1 : 0.85), sube: azar(0.04, 0.25), cae: azar(0.6, 1.8) });
+    const buf = generar(dur, (data, c, sr2, n) => {
+      let marron = 0, lento = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr2;
+        const w = Math.random() * 2 - 1;
+        marron = (marron + 0.035 * w) / 1.035;          // grave
+        lento += 0.18 * (w - lento);                      // cuerpo medio
+        let env = 0;
+        for (const g of golpes) {
+          if (t < g.t) continue;
+          const x = t - g.t;
+          env += g.a * (x < g.sube ? x / g.sube : Math.exp(-(x - g.sube) / g.cae));
+        }
+        // final que se va apagando
+        env *= Math.min(1, (dur - t) / 1.2);
+        data[i] = (marron * 5 + lento * 0.55) * env;
+      }
+      // estallido seco cuando el rayo cae cerca
+      if (d < 0.45) {
+        const fuerza = 1 - d / 0.45;
+        const nCrack = 2 + Math.floor(Math.random() * 3);
+        for (let r = 0; r < nCrack; r++) {
+          const ini = Math.floor(sr2 * (r === 0 ? 0 : azar(0.02, 0.35))), largo = Math.floor(sr2 * azar(0.08, 0.35));
+          const a = (r === 0 ? 0.9 : azar(0.3, 0.7)) * fuerza;
+          for (let i = 0; i < largo && ini + i < n; i++) data[ini + i] += (Math.random() * 2 - 1) * a * Math.exp(-i / (largo / 5));
+        }
+      }
+      // normaliza: el más fuerte llega a 0,9 y los demás, en proporción a la distancia (se ajusta con la ganancia)
+      let pico = 0;
+      for (let i = 0; i < n; i++) { const v = Math.abs(data[i]); if (v > pico) pico = v; }
+      if (pico > 0) { const f = 0.9 / pico; for (let i = 0; i < n; i++) data[i] *= f; }
+    });
+    const s = ctx.createBufferSource(); s.buffer = buf;
+    // cuanto más lejos, más apagado (menos agudos) y más bajo
+    const lp = filtro('lowpass', 900 + (1 - d) * 3500, 0.5);
+    lp.frequency.setValueAtTime(900 + (1 - d) * 3500, ctx.currentTime);
+    lp.frequency.exponentialRampToValueAtTime(260 + (1 - d) * 300, ctx.currentTime + 1.2);
+    const cuerpo = ctx.createBiquadFilter(); cuerpo.type = 'peaking'; cuerpo.frequency.value = 320; cuerpo.Q.value = 0.8; cuerpo.gain.value = 7;
+    const g = ctx.createGain(); g.gain.value = 0.6 + (1 - d) * 1.1;
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) pan.pan.value = azar(-0.6, 0.6);
+    s.connect(lp); lp.connect(cuerpo); cuerpo.connect(g);
+    if (pan) { g.connect(pan); pan.connect(sal); } else g.connect(sal);
+    s.start();
+    const parar = () => { try { s.stop(); } catch (e) {} };
+    vivos.add(parar);
+    s.onended = () => { vivos.delete(parar); try { g.disconnect(); } catch (e) {} };
+  }
+  /** Avisa a la pantalla de Relajación para que destelle (intensidad 0–1) */
+  const oyentesRayo = new Set();
+  function relampago(d) { const f = 1 - d / 0.45; oyentesRayo.forEach(fn => { try { fn(f); } catch (e) {} }); }
+
   /* ---------------- AMBIENTES ----------------
    * Cada uno recibe la salida (un GainNode) y devuelve una función para pararlo. */
   const AMBIENTES = {
@@ -105,21 +167,32 @@
     tormenta: {
       nombre: 'Tormenta', emoji: '⛈️', color: '#5A4FCF',
       crear(sal) {
-        const paraLluvia = AMBIENTES.lluvia.crear(sal);
-        const trueno = ctx.createGain(); trueno.gain.value = 0.08;
-        const lp = filtro('lowpass', 140);
-        const r = bucle(ruido('marron', 10), lp, 1.6); cadena(lp, trueno, sal);
-        let vivo = true;
-        const rayo = () => {
+        // la lluvia algo más baja que sola, para que los truenos destaquen
+        const salLluvia = ctx.createGain(); salLluvia.gain.value = 0.7; salLluvia.connect(sal);
+        const paraLluvia = AMBIENTES.lluvia.crear(salLluvia);
+        // retumbo lejano de fondo, muy suave
+        const fondoLp = filtro('lowpass', 220);
+        const fondo = bucle(ruido('marron', 10), fondoLp, 0.5);
+        const fondoG = ctx.createGain(); fondoG.gain.value = 0.12; cadena(fondoLp, fondoG, sal);
+        let vivo = true, t0 = null;
+        const vivos = new Set();
+        const rayo = (primera) => {
           if (!vivo) return;
-          const t = ctx.currentTime;
-          trueno.gain.cancelScheduledValues(t);
-          trueno.gain.setTargetAtTime(azar(0.6, 1.1), t, azar(0.05, 0.4));
-          trueno.gain.setTargetAtTime(0.08, t + azar(0.8, 2), azar(1.5, 3.5));
-          setTimeout(rayo, azar(14000, 38000));
+          // distancia: 0 = encima, 1 = muy lejos. Alterna cercanos y lejanos para que la tormenta «se mueva».
+          const d = primera ? azar(0.35, 0.7) : Math.random() < 0.4 ? azar(0, 0.35) : azar(0.35, 1);
+          const cercano = d < 0.45;
+          // el relámpago se ve antes de oír el trueno (unos 3 s por kilómetro)
+          if (cercano) relampago(d);
+          const retraso = 0.15 + d * 3.2;
+          setTimeout(() => { if (vivo) trueno(d, sal, vivos); }, retraso * 1000);
+          t0 = setTimeout(() => rayo(false), azar(12000, 32000));
         };
-        const t0 = setTimeout(rayo, azar(4000, 12000));
-        return () => { vivo = false; clearTimeout(t0); paraLluvia(); r.parar(); };
+        t0 = setTimeout(() => rayo(true), azar(3000, 8000));
+        return () => {
+          vivo = false; clearTimeout(t0);
+          vivos.forEach(f => f()); vivos.clear();
+          paraLluvia(); fondo.parar(); setTimeout(() => salLluvia.disconnect(), 200);
+        };
       }
     },
     olas: {
@@ -431,7 +504,9 @@
   function planificar() {
     const m = estado.musica;
     if (!m || !m.motor) return;
-    while (m.siguiente < ctx.currentTime + 0.4) m.siguiente += m.motor.paso(m.siguiente);
+    // con la pantalla apagada los temporizadores van más lentos: se programa más por delante
+    const margen = document.hidden ? 3 : 0.4;
+    while (m.siguiente < ctx.currentTime + margen) m.siguiente += m.motor.paso(m.siguiente);
   }
   function arrancarReloj() {
     if (reloj) return;
@@ -458,6 +533,8 @@
   const R = {
     AMBIENTES, PIEZAS,
     on(f) { ev.add(f); return () => ev.delete(f); },
+    /** Relámpagos de la tormenta: f(intensidad) justo antes de cada trueno cercano */
+    onRelampago(f) { oyentesRayo.add(f); return () => oyentesRayo.delete(f); },
     sonando() { return !!(Object.keys(estado.ambientes).length || estado.musica); },
     ambientesActivos() { return Object.keys(estado.ambientes); },
     musicaActiva() { return estado.musica ? (estado.musica.id || ('pista:' + estado.musica.pista)) : null; },

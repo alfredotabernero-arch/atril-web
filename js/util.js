@@ -221,7 +221,7 @@ window.Atril = window.Atril || {};
    */
   const motivosPantalla = new Set();
   let wakeLock = null;
-  let estadoNativo = null;
+  let estadoNativo = null, pidiendo = false;
   async function aplicarPantalla() {
     const on = motivosPantalla.size > 0;
     const nat = A.nativo && A.nativo.Pantalla;
@@ -230,9 +230,11 @@ window.Atril = window.Atril || {};
       return;
     }
     try {
-      if (on && 'wakeLock' in navigator && !wakeLock && !document.hidden) {
-        wakeLock = await navigator.wakeLock.request('screen');
+      if (on && 'wakeLock' in navigator && !wakeLock && !pidiendo && !document.hidden) {
+        pidiendo = true;
+        try { wakeLock = await navigator.wakeLock.request('screen'); } finally { pidiendo = false; }
         wakeLock.addEventListener('release', () => { wakeLock = null; });
+        if (!motivosPantalla.size) { await wakeLock.release(); wakeLock = null; }
       } else if (!on && wakeLock) {
         await wakeLock.release(); wakeLock = null;
       }
@@ -246,6 +248,8 @@ window.Atril = window.Atril || {};
   }
   // el navegador suelta el bloqueo al ocultarse la página: se recupera al volver
   document.addEventListener('visibilitychange', () => { if (!document.hidden && motivosPantalla.size) aplicarPantalla(); });
+  // algunos navegadores (iPhone) solo lo conceden tras tocar la pantalla
+  document.addEventListener('pointerdown', () => { if (motivosPantalla.size && !wakeLock && !(A.nativo && A.nativo.Pantalla)) aplicarPantalla(); }, { passive: true });
 
   A.u = {
     h, append, $, $$, uid, claveDia, inicioDia, inicioSemana, sumarDias, fechaCorta, fechaLarga,

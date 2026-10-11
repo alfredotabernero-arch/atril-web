@@ -181,7 +181,7 @@
       const filaAfin = h('div.atril-metro.atril-afin',
         h('div.atril-afin-lectura', notaEl, escalaAfin, centsEl),
         btnMic,
-        h('span.atril-afin-la', 'La ' + (la % 1 ? la.toFixed(1) : la) + ' Hz'));
+        h('span.atril-afin-la', A.pitch.nombreLa() + ' ' + (la % 1 ? la.toFixed(1) : la) + ' Hz'));
       let raf = 0, buf = null, ultima = 0, alterno = false;
       const hist = [];
       function escuchar() {

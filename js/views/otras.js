@@ -25,14 +25,14 @@
     const pintar = () => {
       const m = (cfg.octava + 1) * 12 + cfg.nota;
       etiqueta.replaceChildren(pitch.soloNombre(m), h('sub', cfg.octava));
-      sub.textContent = frecs()[0].toFixed(2) + ' Hz · La = ' + la + ' Hz' + (cfg.quinta ? ' · con quinta' : '');
+      sub.textContent = frecs()[0].toFixed(2) + ' Hz · ' + pitch.nombreLa() + ' = ' + la + ' Hz' + (cfg.quinta ? ' · con quinta' : '');
       play.replaceChildren(icono(pedal.sonando() ? 'stop' : 'play'));
       u.$$('button', teclado).forEach((b, i) => b.classList.toggle('on', i === cfg.nota));
     };
     const reiniciar = () => { if (pedal.sonando()) pedal.tocar(frecs(), cfg.timbre, cfg.volumen); pintar(); guardar(); };
     play.addEventListener('click', () => { if (pedal.sonando()) pedal.parar(); else pedal.tocar(frecs(), cfg.timbre, cfg.volumen); pintar(); });
 
-    const teclado = h('div.teclado-pedal', pitch.NOMBRES.map((n, i) => h('button', { type: 'button', onclick: () => { cfg.nota = i; reiniciar(); } }, n)));
+    const teclado = h('div.teclado-pedal', pitch.nombres().map((n, i) => h('button', { type: 'button', onclick: () => { cfg.nota = i; reiniciar(); } }, n)));
     const octava = h('div.segmentado', [1, 2, 3, 4, 5].map(o => h('button' + (o === cfg.octava ? '.on' : ''), {
       type: 'button', onclick: e => { cfg.octava = o; u.$$('button', octava).forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); reiniciar(); }
     }, 'Octava ' + o)));

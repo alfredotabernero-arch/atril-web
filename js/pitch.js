@@ -17,11 +17,21 @@
     const alt = /[#♯]/.test(m[2]) ? 1 : /[b♭]/.test(m[2]) ? -1 : 0;
     return (Number(m[3]) + 1) * 12 + base + alt;
   }
-  function nombreMidi(m, latino = true) {
+  /* Nombres de las notas: tradicionales (Do, Re, Mi…) o anglosajones (C, D, E…). Se elige en Ajustes. */
+  let latina = true;
+  const ponerNotacion = v => { latina = v !== 'anglosajona'; };
+  const notacion = () => (latina ? 'latina' : 'anglosajona');
+  const nombres = () => (latina ? NOMBRES : NOMBRES_AM);
+  /** «La» o «A», para textos como «La = 442 Hz» */
+  const nombreLa = () => (latina ? 'La' : 'A');
+  /** "Fa#3" (como se escriben las cuerdas) → nombre en la notación elegida, con octava */
+  const nombreTexto = txt => { const m = midiDeNombre(txt); return m === null ? txt : nombreMidi(m); };
+
+  function nombreMidi(m, latino = latina) {
     const n = Math.round(m);
     return (latino ? NOMBRES : NOMBRES_AM)[((n % 12) + 12) % 12] + (Math.floor(n / 12) - 1);
   }
-  function soloNombre(m, latino = true) {
+  function soloNombre(m, latino = latina) {
     const n = Math.round(m);
     return (latino ? NOMBRES : NOMBRES_AM)[((n % 12) + 12) % 12];
   }
@@ -99,5 +109,6 @@
     return out;
   }
 
-  A.pitch = { diezmar, yin, frecMidi, midiDeFrec, midiDeNombre, nombreMidi, soloNombre, INSTRUMENTOS, NOMBRES };
+  A.pitch = { diezmar, yin, frecMidi, midiDeFrec, midiDeNombre, nombreMidi, soloNombre, INSTRUMENTOS, NOMBRES,
+    ponerNotacion, notacion, nombres, nombreLa, nombreTexto };
 })(window.Atril);

@@ -322,6 +322,67 @@
     return out;
   }
 
+  /*
+   * «Para mañana»: lo que el músico deja preparado (la víspera o cuando quiera) para un día concreto.
+   * Se guarda por día: { 'AAAA-MM-DD': [{ obraId, seccionId|null }] }. Lo de días pasados se borra solo.
+   * En «Hoy te toca» va siempre primero; las sugerencias automáticas completan después.
+   */
+  const paraDia = {
+    async _todo() {
+      const t = await DB.kvGet('paraDia', {}) || {};
+      const hoy = u.claveDia(new Date());
+      let cambio = false;
+      Object.keys(t).forEach(k => { if (k < hoy) { delete t[k]; cambio = true; } });
+      if (cambio) await DB.kvSet('paraDia', t);
+      return t;
+    },
+    async de(fecha) { return (await this._todo())[u.claveDia(fecha)] || []; },
+    async poner(fecha, items) {
+      const t = await this._todo(), k = u.claveDia(fecha);
+      if (items && items.length) t[k] = items; else delete t[k];
+      await DB.kvSet('paraDia', t);
+    },
+    /** Añade o quita una obra/sección del día. Devuelve true si queda añadida. */
+    async alternar(fecha, obraId, seccionId) {
+      const l = await this.de(fecha);
+      const i = l.findIndex(x => x.obraId === obraId && (x.seccionId || null) === (seccionId || null));
+      if (i >= 0) l.splice(i, 1); else l.push({ obraId, seccionId: seccionId || null });
+      await this.poner(fecha, l);
+      return i < 0;
+    },
+    async tiene(fecha, obraId, seccionId) {
+      return (await this.de(fecha)).some(x => x.obraId === obraId && (x.seccionId || null) === (seccionId || null));
+    },
+    manana() { const d = new Date(); d.setDate(d.getDate() + 1); return d; }
+  };
+
+  /**
+   * «Hoy te toca» completo: primero lo preparado para hoy (en su orden), luego las sugerencias
+   * automáticas hasta completar. Cada elemento: { c, s|null, preparado, hecho, motivos }.
+   */
+  async function hoyTeToca(cart, sesiones, nAuto = 3) {
+    const hoy = new Date();
+    const prep = await paraDia.de(hoy);
+    const ultima = ultimasVeces(cart, sesiones);
+    const obrasHoy = new Set(sesiones.filter(x => x.obraId && u.diasEntre(x.inicio, hoy) === 0).map(x => x.obraId));
+    const lista = [];
+    prep.forEach(p => {
+      const c = cart.find(x => x.obra.id === p.obraId);
+      if (!c) return;
+      const s = p.seccionId ? c.secciones.find(x => x.id === p.seccionId) : null;
+      if (p.seccionId && !s) return;
+      const hecho = s ? !!(ultima[s.id] && u.diasEntre(ultima[s.id], hoy) === 0) : obrasHoy.has(c.obra.id);
+      lista.push({ c, s, preparado: true, hecho, motivos: [{ t: hecho ? '✓ Hecho hoy' : 'Lo preparaste', c: hecho ? 'bien' : 'acento' }] });
+    });
+    const yaEn = new Set(lista.filter(x => x.s).map(x => x.s.id));
+    const obrasEnteras = new Set(lista.filter(x => !x.s).map(x => x.c.obra.id));
+    const n = lista.length ? Math.max(1, nAuto - 1) : nAuto;
+    const auto = sugerencias(cart, sesiones, n + yaEn.size + 5)
+      .filter(x => !yaEn.has(x.s.id) && !obrasEnteras.has(x.c.obra.id)).slice(0, n)
+      .map(x => Object.assign({}, x, { preparado: false, hecho: false }));
+    return { preparados: lista, auto };
+  }
+
   function sugerencias(cart, sesiones, n = 3) {
     const ultima = ultimasVeces(cart, sesiones);
     const hoy = new Date();
@@ -371,6 +432,6 @@
   A.modelo = {
     ESTADOS, FASES, estado, indiceFase, faseDe, estadoObra, DOMINIO, COLORES, compasesSeccion, rangoTexto, tieneRango, pendientes, sugerencias,
     fraccionLeida, compasesLeidos, lecturaObra, compasesSinSeccion, maestria, progresoSeccion, progresoObra, ritmoObra, migrar,
-    plan, previstoDia, minutosPorDia, racha, sesion, registrarTempo, cartera, nombreTempo, trabajadasHoy
+    plan, previstoDia, minutosPorDia, racha, sesion, registrarTempo, cartera, nombreTempo, trabajadasHoy, paraDia, hoyTeToca
   };
 })(window.Atril);

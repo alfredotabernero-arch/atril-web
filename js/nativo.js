@@ -10,10 +10,18 @@
   A.nativo = {
     es: esNativo,
     plataforma,
-    /** Solo Android permite cerrar la app desde dentro */
-    puedeSalir: esNativo && plataforma === 'android',
+    /** Versión de Windows (Electron): expone window.atrilPC */
+    pc: !!window.atrilPC,
+    /** Android y la versión de PC permiten cerrar la app desde dentro */
+    puedeSalir: (esNativo && plataforma === 'android') || !!(window.atrilPC && window.atrilPC.salir),
+    /** Cierra la app (Android o PC) */
+    cerrar() {
+      if (window.atrilPC && window.atrilPC.salir) window.atrilPC.salir();
+      else if (A.nativo.App) A.nativo.App.exitApp();
+    },
     Metronomo: reg('Metronomo'),
     Pantalla: reg('Pantalla'),
+    Fondo: reg('Fondo'),
     App: reg('App'),
     Filesystem: reg('Filesystem'),
     Share: reg('Share')

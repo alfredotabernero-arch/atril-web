@@ -1,5 +1,5 @@
 /* Atril — service worker: funciona sin conexión cuando se sirve por http(s) */
-const CACHE = 'atril-v1.8.0-8bda4e5';
+const CACHE = 'atril-v1.9.0-4d12e54';
 const ARCHIVOS = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/vendor/capacitor.js', 'js/nativo.js', 'js/util.js', 'js/zip.js', 'js/anotaciones.js', 'js/relax.js', 'js/views/relajacion.js', 'js/fotos.js', 'js/views/seccion.js', 'js/views/atril.js', 'fonts/nunito-latin-wght-normal.woff2', 'fonts/nunito-latin-ext-wght-normal.woff2', 'js/iconos.js', 'js/db.js', 'js/pitch.js', 'js/audio.js', 'js/modelo.js', 'js/app.js',

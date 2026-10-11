@@ -781,3 +781,31 @@ input.blanco { accent-color: #fff; }
 .reparto-fila input { width: 72px; text-align: center; }
 .hoy-ya { display: flex; gap: 8px; align-items: flex-start; margin: 2px 4px 14px; font-size: .88rem; color: var(--tinta-2, inherit); opacity: .9; }
 .hoy-ya svg { width: 18px; height: 18px; flex: none; color: #22C27A; margin-top: 1px; }
+
+/* Relajación: destello del relámpago (tormenta) */
+.relax-destello { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 900; }
+.relax-destello.on { animation: relampago 0.9s ease-out; }
+@keyframes relampago {
+  0% { opacity: 0; } 4% { opacity: var(--fuerza, 0.6); } 12% { opacity: 0.05; }
+  18% { opacity: calc(var(--fuerza, 0.6) * 0.8); } 40% { opacity: 0.12; } 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .relax-destello.on { animation-duration: 1.6s; } }
+
+/* «Hoy te toca» con lo preparado y «Para mañana» */
+.seccion-titulo > span.mini { flex: 1; }
+.sug-num svg { width: 18px; height: 18px; }
+.sug-card.preparada { outline: 2px solid color-mix(in srgb, var(--c) 35%, transparent); outline-offset: -2px; }
+.sug-card.hecha { opacity: 0.62; }
+.sug-card.hecha .sug-num { background: var(--verde); }
+.sug-separador { font-size: 0.82rem; font-weight: 800; color: color-mix(in srgb, var(--tinta) 55%, transparent); margin: 6px 4px -2px; text-transform: uppercase; letter-spacing: 0.04em; }
+.btn-icono.activo { background: var(--primario); color: #fff; }
+.para-dia { display: flex; flex-direction: column; gap: 12px; max-height: 55vh; overflow-y: auto; }
+.para-dia-obra { border-left: 5px solid var(--c); padding-left: 10px; }
+.para-dia-titulo { font-weight: 900; margin-bottom: 6px; }
+.chip-dia { border: 2px solid var(--borde); background: var(--superficie); color: var(--tinta); border-radius: 999px; padding: 6px 12px; font: inherit; font-weight: 700; font-size: 0.88rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.chip-dia .orden:empty { display: none; }
+.chip-dia .orden { background: #fff; color: var(--c, var(--primario)); border-radius: 999px; min-width: 20px; height: 20px; display: inline-grid; place-items: center; font-size: 0.75rem; font-weight: 900; }
+.chip-dia.on { background: var(--c, var(--primario)); border-color: var(--c, var(--primario)); color: #fff; }
+.para-manana .tarjeta-cab .btn { margin-left: auto; }
+.lista-manana { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lista-manana li { display: flex; align-items: center; gap: 8px; }

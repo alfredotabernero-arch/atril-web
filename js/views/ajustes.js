@@ -40,7 +40,25 @@
       main.appendChild(h('section.tarjeta', h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#FF8A3D' } }, A.icono('imagen')), h('h2', 'Apariencia')), segTema,
         A.herr.interruptor('Pantalla de bienvenida al abrir', A.bienvenida.activa(), v => A.bienvenida.poner(v)),
         h('button.enlace', { onclick: () => A.bienvenida.ver() }, 'Ver la pantalla de bienvenida'),
-        h('p.mini.tenue', { style: { margin: '10px 0 0' } }, 'El La de referencia (430–445 Hz) se cambia en Herramientas › Afinador.')));
+        h('p.mini.tenue', { style: { margin: '10px 0 0' } }, 'El ' + A.pitch.nombreLa() + ' de referencia (430–445 Hz) se cambia en Herramientas › Afinador.')));
+
+      // ---------- nombres de las notas
+      const notacion = A.pitch.notacion();
+      const segNotas = h('div.segmentado', [['latina', 'Do, Re, Mi…'], ['anglosajona', 'C, D, E…']].map(([v, t]) =>
+        h('button' + (notacion === v ? '.on' : ''), { type: 'button', onclick: async () => { await DB.kvSet('notacion', v); A.pitch.ponerNotacion(v); A.app.refrescar(); } }, t)));
+      main.appendChild(h('section.tarjeta', h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#3D7BFF' } }, A.icono('nota')), h('h2', 'Nombres de las notas')),
+        segNotas,
+        h('p.mini.tenue', { style: { margin: '8px 0 0' } }, 'Tradicional (Do, Re, Mi, Fa, Sol, La, Si) o anglosajona (C, D, E, F, G, A, B). Se usa en el afinador, en el de «En el atril» y en la nota pedal.')));
+
+      // ---------- pantalla encendida
+      const pant = A.pantalla;
+      main.appendChild(h('section.tarjeta', h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#FFB020' } }, A.icono('sol')), h('h2', 'Pantalla')),
+        A.herr.interruptor('Mantener la pantalla encendida', pant.siempre, v => pant.poner('siempre', v)),
+        h('p.mini.tenue', { style: { margin: '2px 0 10px' } }, 'Mientras Atril esté abierto, el móvil no se apaga solo (afinador, partitura, metrónomo…). Al salir de Atril, todo vuelve a ser como siempre.'),
+        A.herr.interruptor('En Relajación, dejar que se apague', pant.relaxApagar, v => pant.poner('relax', v)),
+        h('p.mini.tenue', { style: { margin: '2px 0 0' } }, A.nativo && A.nativo.Fondo
+          ? 'Mientras suena la relajación, la pantalla se apaga a su tiempo normal y el sonido sigue. Una notificación permite pararlo.'
+          : 'Mientras suena la relajación, la pantalla se apaga a su tiempo normal. En iPhone y iPad, al bloquearse puede cortarse el sonido: si pasa, desactiva esta opción.')));
 
       // ---------- «En el atril»
       const micPref = await DB.kvGet('atrilMicAlCambiar', 'preguntar');

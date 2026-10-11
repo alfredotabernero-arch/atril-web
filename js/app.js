@@ -368,7 +368,72 @@
     return sec;
   }
 
-  A.dialogos = { selectorObra, iniciar: dialogoIniciar, terminar: dialogoTerminar, sesionManual: dialogoSesionManual, obra: dialogoObra, seccion: dialogoSeccion, variasSecciones: dialogoVariasSecciones,
+  /**
+   * «Para mañana» (o para hoy): elegir obras y secciones tocando chips. El orden en que se tocan
+   * es el orden en que saldrán en «Hoy te toca». Devuelve true si se guardó.
+   */
+  async function dialogoParaDia(fecha) {
+    const esHoy = u.diasEntre(new Date(), fecha) === 0;
+    const cart = (await modelo.cartera()).filter(c => c.obra.estado !== 'archivada' && c.estado !== 'lista');
+    let elegidos = (await modelo.paraDia.de(fecha)).filter(x => cart.some(c => c.obra.id === x.obraId));
+    const clave = x => x.obraId + '|' + (x.seccionId || '');
+    const contador = h('p.mini.tenue', { style: { margin: '0 0 10px' } });
+    const chips = [];
+    const pintarChips = () => {
+      chips.forEach(({ b, it }) => {
+        const pos = elegidos.findIndex(x => clave(x) === clave(it));
+        b.classList.toggle('on', pos >= 0);
+        b.querySelector('.orden').textContent = pos >= 0 ? pos + 1 : '';
+      });
+      contador.textContent = elegidos.length
+        ? `${elegidos.length} ${elegidos.length === 1 ? 'elegida' : 'elegidas'}. Saldrán en este orden, antes que las sugerencias.`
+        : 'Toca lo que quieres estudiar. Lo que no elijas lo seguirá proponiendo Atril según tus prioridades.';
+    };
+    const chip = (it, texto) => {
+      const b = h('button.chip-dia', { type: 'button', onclick: () => {
+        const i = elegidos.findIndex(x => clave(x) === clave(it));
+        if (i >= 0) elegidos.splice(i, 1); else elegidos.push(it);
+        pintarChips();
+      } }, h('span.orden'), texto);
+      chips.push({ b, it });
+      return b;
+    };
+    const lista = h('div.para-dia', cart.length ? cart.map(c => h('div.para-dia-obra', { style: { '--c': c.obra.color } },
+      h('div.para-dia-titulo', c.obra.titulo),
+      h('div.fila.envuelve', { style: { gap: '6px' } },
+        chip({ obraId: c.obra.id, seccionId: null }, c.secciones.length ? 'Toda la obra' : 'Estudiarla'),
+        c.secciones.filter(s => modelo.faseDe(s) !== 'lista').map(s => chip({ obraId: c.obra.id, seccionId: s.id }, (s.letra ? s.letra + ' · ' : '') + s.nombre)))))
+      : h('p.tenue', 'No hay obras en marcha. Añade alguna en «Obras».'));
+    pintarChips();
+    const r = await u.modal(esHoy ? 'Para hoy' : 'Para mañana', h('div', contador, lista), [
+      { texto: 'Cancelar', accion: () => null },
+      elegidos.length ? { texto: 'Vaciar', accion: () => { elegidos = []; pintarChips(); return false; } } : null,
+      { texto: 'Guardar', clase: 'primario', accion: () => 'ok' }
+    ].filter(Boolean));
+    if (r !== 'ok') return false;
+    await modelo.paraDia.poner(fecha, elegidos);
+    u.toast(elegidos.length ? (esHoy ? 'Preparado para hoy' : 'Preparado para mañana') : 'Lista vaciada');
+    return true;
+  }
+
+  /** Botón de cabecera (obra o sección): añadir o quitar de «Para mañana» */
+  async function botonManana(obraId, seccionId) {
+    const b = h('button.btn-icono', { type: 'button' }, icono('manana'));
+    const pintar = on => {
+      b.classList.toggle('activo', on);
+      const t = on ? 'Quitar de «Para mañana»' : 'Añadir a «Para mañana»';
+      b.setAttribute('aria-label', t); b.title = t;
+    };
+    pintar(await modelo.paraDia.tiene(modelo.paraDia.manana(), obraId, seccionId));
+    b.addEventListener('click', async () => {
+      const on = await modelo.paraDia.alternar(modelo.paraDia.manana(), obraId, seccionId);
+      pintar(on);
+      u.toast(on ? 'Añadida a «Para mañana»' : 'Quitada de «Para mañana»');
+    });
+    return b;
+  }
+
+  A.dialogos = { selectorObra, paraDia: dialogoParaDia, botonManana, iniciar: dialogoIniciar, terminar: dialogoTerminar, sesionManual: dialogoSesionManual, obra: dialogoObra, seccion: dialogoSeccion, variasSecciones: dialogoVariasSecciones,
     obraCompleta: dialogoObraCompleta, dividir: dialogoDividir, unir: unirConSiguiente };
 
   /* ======================= Navegación ======================= */
@@ -583,8 +648,40 @@
       await new Promise(r => setTimeout(r, 700));   // deja terminar los guardados con retardo (notas, lectura…)
       await DB.esperar();
     } catch (e) { console.error(e); }
-    if (A.nativo.App) A.nativo.App.exitApp();
+    A.nativo.cerrar();
   }
+
+  /* ======================= Pantalla encendida ======================= */
+  /*
+   * Ajustes › Pantalla:
+   *  - «Mantener la pantalla encendida» (de entrada, sí): mientras Atril está abierto, el móvil no se apaga solo.
+   *  - «En Relajación, dejar que se apague» (de entrada, sí): mientras suena la relajación, la pantalla
+   *    se apaga a su tiempo normal y el sonido sigue (en Android, con un servicio en segundo plano).
+   */
+  const pantalla = {
+    siempre: true, relaxApagar: true, fondo: false,
+    async cargar() {
+      this.siempre = await DB.kvGet('pantallaSiempre', !(A.nativo && A.nativo.pc)) !== false;   // en el PC, de entrada no
+      this.relaxApagar = await DB.kvGet('relaxApagarPantalla', true) !== false;
+      this.revisar();
+    },
+    async poner(clave, v) {
+      if (clave === 'siempre') { this.siempre = v; await DB.kvSet('pantallaSiempre', v); }
+      else { this.relaxApagar = v; await DB.kvSet('relaxApagarPantalla', v); }
+      this.revisar();
+    },
+    revisar() {
+      const relax = !!(A.relax && A.relax.sonando());
+      u.pantallaEncendida(this.siempre && !(relax && this.relaxApagar), 'app');
+      // Android: mientras suena la relajación, un servicio mantiene viva la app con la pantalla apagada
+      const F = A.nativo && A.nativo.Fondo;
+      if (F && relax !== this.fondo) {
+        this.fondo = relax;
+        (relax ? F.activar({ texto: 'Sonando · toca para volver a Atril' }) : F.desactivar()).catch(() => {});
+      }
+    }
+  };
+  A.pantalla = pantalla;
 
   /* ======================= Arranque ======================= */
   async function arrancar() {
@@ -596,6 +693,10 @@
     // mientras corre el temporizador de estudio, la pantalla no se apaga
     modelo.sesion.on(e => u.pantallaEncendida(!!(e && !e.pausadaEn), 'sesion'));
     await modelo.sesion.cargar();
+    A.pitch.ponerNotacion(await DB.kvGet('notacion', 'latina'));
+    if (A.relax) A.relax.on(() => pantalla.revisar());
+    if (A.nativo && A.nativo.Fondo) A.nativo.Fondo.addListener('parar', () => { if (A.relax) A.relax.pararTodo(0.3); });
+    await pantalla.cargar();
     window.addEventListener('hashchange', pintar);
     // al volver a la app, refrescar datos que dependen de la hora
     document.addEventListener('visibilitychange', () => { if (!document.hidden && ruta().vista === 'hoy') refrescar(); });

@@ -86,19 +86,30 @@
             h('button.btn.primario', { onclick: async () => { const o = await A.dialogos.obra(); if (o) location.hash = '#/obra/' + o.id; } }, icono('mas'), 'Añadir obra'),
             h('a.btn', { href: '#/ajustes' }, 'Ver un ejemplo'))));
       } else {
-        // --------- hoy te toca
-        const sug = modelo.sugerencias(activas, sesiones, 3);
-        if (sug.length) {
-          main.appendChild(h('div.seccion-titulo', h('h2', 'Hoy te toca'), h('span.mini.tenue', 'según tus prioridades')));
+        // --------- hoy te toca: primero lo preparado («Para mañana» de ayer), luego las sugerencias
+        const { preparados, auto } = await modelo.hoyTeToca(activas, sesiones, 3);
+        const todos = preparados.filter(x => !x.hecho).concat(auto, preparados.filter(x => x.hecho));
+        const cambiarHoy = h('button.enlace.mini', { onclick: async () => { if (await A.dialogos.paraDia(new Date())) A.app.refrescar(); } },
+          preparados.length ? 'Cambiar' : 'Elegir yo');
+        if (todos.length) {
+          main.appendChild(h('div.seccion-titulo', h('h2', 'Hoy te toca'),
+            h('span.mini.tenue', preparados.length ? (auto.length ? 'lo que preparaste y tus prioridades' : 'lo que preparaste') : 'según tus prioridades'), cambiarHoy));
           const caja = h('div.sugerencias');
-          sug.forEach(({ c, s, motivos }, i) => {
-            caja.appendChild(h('div.sug-card', { style: { '--c': c.obra.color } },
-              h('div.sug-num', i + 1),
-              h('a.crece.sug-cuerpo', { href: '#/seccion/' + s.id },
+          let num = 0;
+          todos.forEach(({ c, s, motivos, preparado, hecho }, i) => {
+            if (!preparado && i > 0 && todos[i - 1].preparado && !todos[i - 1].hecho) caja.appendChild(h('div.sug-separador', 'Además, según tus prioridades'));
+            const destino = s ? '#/seccion/' + s.id : '#/obra/' + c.obra.id;
+            const jugar = s
+              ? h('a.btn.primario.redondo-btn', { href: '#/atril/' + s.id, 'aria-label': 'Estudiar en el atril', title: 'Al atril' }, icono('play'))
+              : h('button.btn.primario.redondo-btn', { 'aria-label': 'Empezar a estudiar', title: 'Empezar', onclick: () => A.dialogos.iniciar(c.obra.id) }, icono('play'));
+            caja.appendChild(h('div.sug-card' + (preparado ? '.preparada' : '') + (hecho ? '.hecha' : ''), { style: { '--c': c.obra.color } },
+              h('div.sug-num', hecho ? icono('check') : ++num),
+              h('a.crece.sug-cuerpo', { href: destino },
                 h('div.sug-obra', c.obra.titulo),
-                h('div.sug-sec', (s.letra ? s.letra + ' · ' : '') + s.nombre, h('span', ' ' + modelo.rangoTexto(s))),
+                s ? h('div.sug-sec', (s.letra ? s.letra + ' · ' : '') + s.nombre, h('span', ' ' + modelo.rangoTexto(s)))
+                  : h('div.sug-sec', c.secciones.length ? 'Toda la obra' : 'La obra'),
                 h('div.fila.envuelve', { style: { gap: '5px', marginTop: '6px' } }, motivos.slice(0, 3).map(m => h('span.chip.' + m.c, m.t)))),
-              h('a.btn.primario.redondo-btn', { href: '#/atril/' + s.id, 'aria-label': 'Estudiar en el atril', title: 'Al atril' }, icono('play'))));
+              jugar));
           });
           main.appendChild(caja);
         }
@@ -134,6 +145,27 @@
             h('span.chip.acento', 'Plan')))));
           main.appendChild(h('section.tarjeta', h('h2', 'Ojo con…'), l));
         }
+      }
+
+      // --------- para mañana
+      if (activas.length) {
+        const manana = modelo.paraDia.manana();
+        const lm = await modelo.paraDia.de(manana);
+        const nombres = lm.map(x => {
+          const c = activas.find(y => y.obra.id === x.obraId);
+          if (!c) return null;
+          const sec = x.seccionId ? c.secciones.find(y => y.id === x.seccionId) : null;
+          if (x.seccionId && !sec) return null;
+          return h('li', h('span.punto-color', { style: { background: c.obra.color } }),
+            h('span', h('b', sec ? (sec.letra ? sec.letra + ' · ' : '') + sec.nombre : 'Toda la obra'), ' · ' + c.obra.titulo));
+        }).filter(Boolean);
+        main.appendChild(h('section.tarjeta.para-manana',
+          h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#7C5CFF' } }, icono('manana')), h('h2.crece', 'Para mañana'),
+            h('button.btn' + (nombres.length ? '' : '.primario'), { onclick: async () => { if (await A.dialogos.paraDia(manana)) A.app.refrescar(); } },
+              nombres.length ? 'Cambiar' : 'Preparar')),
+          nombres.length
+            ? h('ul.lista-manana', nombres)
+            : h('p.mini.tenue', { style: { margin: 0 } }, 'Deja elegido lo que quieres estudiar mañana: saldrá lo primero en «Hoy te toca», y Atril completará con sus sugerencias.')));
       }
 
       // --------- semana

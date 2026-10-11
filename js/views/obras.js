@@ -78,6 +78,7 @@
       document.documentElement.style.setProperty('--obra', obra.color);
 
       acciones.append(
+        await A.dialogos.botonManana(obra.id, null),
         h('button.btn-icono', { 'aria-label': 'Editar', title: 'Editar', onclick: async () => { if (await A.dialogos.obra(obra)) A.app.refrescar(); } }, icono('editar')),
         h('button.btn-icono', {
           'aria-label': 'Borrar', title: 'Borrar', onclick: async () => {
