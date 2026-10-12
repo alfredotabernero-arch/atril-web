@@ -13,6 +13,48 @@
 
   const PERIODOS = [{ id: '4s', nombre: '4 semanas', sem: 4 }, { id: '12s', nombre: '3 meses', sem: 13 }, { id: '52s', nombre: 'Año', sem: 52 }];
 
+  /** Diálogo: sesiones de una fila de «Tiempo por obra», con casillas para pasarlas a otra obra */
+  async function pasarSesiones(id, nombre, lista, obras) {
+    lista = lista.slice().sort((a, b) => b.inicio - a.inicio);
+    const marcadas = new Set();
+    const destinos = obras.filter(o => o.id !== id).sort((a, b) => (a.estado === 'archivada') - (b.estado === 'archivada') || a.titulo.localeCompare(b.titulo));
+    const sel = h('select', h('option', { value: '' }, 'Elige la obra…'),
+      id !== '_' ? h('option', { value: '_' }, 'Técnica / estudio general') : null,
+      destinos.map(o => h('option', { value: o.id }, o.titulo + (o.estado === 'archivada' ? ' (archivada)' : ''))));
+    const cuenta = h('span.mini.tenue');
+    const pintarCuenta = () => (cuenta.textContent = marcadas.size ? marcadas.size + (marcadas.size === 1 ? ' sesión marcada' : ' sesiones marcadas') + ' · ' + u.minutos(lista.filter(x => marcadas.has(x.id)).reduce((a, x) => a + x.minutos, 0)) : 'Marca las sesiones que quieras pasar');
+    const filas = lista.map(x => {
+      const c = h('input', { type: 'checkbox' });
+      c.addEventListener('change', () => { if (c.checked) marcadas.add(x.id); else marcadas.delete(x.id); pintarCuenta(); });
+      const d = new Date(x.inicio);
+      return h('label.sesion-check', c,
+        h('div.crece', h('b', u.fechaLarga ? u.fechaLarga(d) : d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })),
+          h('span.mini.tenue', ' · ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' · ' + u.minutos(x.minutos)),
+          x.notas ? h('div.mini.tenue', x.notas) : null));
+    });
+    pintarCuenta();
+    const todas = h('button.enlace', { type: 'button', onclick: () => { const on = marcadas.size < lista.length; filas.forEach((f, i) => { const c = f.querySelector('input'); c.checked = on; if (on) marcadas.add(lista[i].id); else marcadas.delete(lista[i].id); }); pintarCuenta(); } }, 'Marcar o desmarcar todas');
+    const r = await u.modal(nombre, h('div',
+      h('p.mini.tenue', { style: { marginTop: 0 } }, lista.length + (lista.length === 1 ? ' sesión' : ' sesiones') + ' en total. Si alguna se apuntó en otra obra por error, márcala y elige a cuál pasarla; los minutos se pasan con ella.'),
+      todas, h('div.sesiones-check', filas), cuenta,
+      u.campo('Pasar a', sel)), [
+      { texto: 'Cerrar', accion: () => null },
+      { texto: 'Pasar', clase: 'primario', accion: () => {
+        if (!marcadas.size) { u.toast('Marca alguna sesión'); return false; }
+        if (!sel.value) { u.toast('Elige a qué obra pasarlas'); return false; }
+        return sel.value;
+      } }
+    ]);
+    if (!r) return false;
+    for (const x of lista.filter(x => marcadas.has(x.id))) {
+      x.obraId = r === '_' ? null : r; x.seccionId = null;
+      delete x.obraBorrada; delete x.colorBorrada;
+      await DB.put('sesiones', x);
+    }
+    u.toast(marcadas.size === 1 ? 'Sesión pasada ✓' : marcadas.size + ' sesiones pasadas ✓');
+    return true;
+  }
+
   A.vistas.estadisticas = {
     titulo: 'Progreso',
     async render({ main, params }) {
@@ -65,19 +107,25 @@
       main.appendChild(h('section.tarjeta', h('h2', 'Constancia'), mapaCalor(porDia, plan, 18), h('p.mini.tenue', { style: { margin: '8px 0 0' } }, 'Últimas 18 semanas. Más intenso = más cerca (o por encima) del objetivo del día.')));
 
       // ---------- tiempo por obra
-      const porObra = {};
-      enPeriodo.forEach(x => { const k = x.obraId || '_'; porObra[k] = (porObra[k] || 0) + x.minutos; });
+      const porObra = {}, colorBorrada = {};
+      const claveObra = x => x.obraId || (x.obraBorrada ? 'b:' + x.obraBorrada : '_');
+      enPeriodo.forEach(x => { const k = claveObra(x); porObra[k] = (porObra[k] || 0) + x.minutos; if (x.colorBorrada) colorBorrada[k] = x.colorBorrada; });
       const nombres = Object.fromEntries(obras.map(o => [o.id, o]));
+      const nombreDe = id => nombres[id] ? nombres[id].titulo : id === '_' ? 'Técnica / general' : id.startsWith('b:') ? 'Borrada: ' + id.slice(2) : 'Obra borrada';
       const filas = Object.entries(porObra).sort((a, b) => b[1] - a[1]);
       const maxO = Math.max(...filas.map(f => f[1]), 1);
       main.appendChild(h('section.tarjeta.barras-h', h('h2', 'Tiempo por obra'),
         filas.map(([id, m]) => {
           const o = nombres[id];
-          return h('div.fila',
-            h('span.nombre', o ? o.titulo : id === '_' ? 'Técnica / general' : 'Obra borrada'),
-            h('div.barra', h('i', { style: { width: (m / maxO * 100) + '%', background: o ? o.color : 'var(--tinta-3)' } })),
+          return h('div.fila.pulsable', {
+            role: 'button', tabindex: 0, title: 'Ver o pasar estas sesiones a otra obra',
+            onclick: async () => { if (await pasarSesiones(id, nombreDe(id), sesiones.filter(x => claveObra(x) === id), obras)) A.app.refrescar(); }
+          },
+            h('span.nombre', nombreDe(id)),
+            h('div.barra', h('i', { style: { width: (m / maxO * 100) + '%', background: o ? o.color : colorBorrada[id] || 'var(--tinta-3)', opacity: o || id === '_' ? 1 : 0.55 } })),
             h('span.valor', u.minutos(m)));
-        })));
+        }),
+        h('p.mini.tenue', { style: { margin: '8px 0 0' } }, 'Toca una fila para ver sus sesiones y, si alguna se apuntó donde no era, pasarla a otra obra.')));
 
       // ---------- hábitos
       const porSemanaDia = [0, 0, 0, 0, 0, 0, 0], porFranja = { 'mañana': 0, 'tarde': 0, 'noche': 0 };

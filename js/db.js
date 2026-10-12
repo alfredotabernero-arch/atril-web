@@ -3,7 +3,7 @@
   'use strict';
 
   const NOMBRE = 'atril';
-  const VERSION = 3;
+  const VERSION = 4;
   const STORES = {
     obras: [],
     secciones: ['obraId'],
@@ -12,10 +12,11 @@
     grabaciones: ['obraId'],
     fotos: ['seccionId', 'obraId'],
     pistas: [],
+    voces: [],
     kv: []
   };
 
-  const BINARIOS = ['fotos', 'grabaciones', 'pistas'];
+  const BINARIOS = ['fotos', 'grabaciones', 'pistas', 'voces'];
   let dbp = null;
   function abrir() {
     if (dbp) return dbp;
@@ -91,8 +92,12 @@
       }
       for (const g of await DB.byIndex('grabaciones', 'obraId', id)) await DB.del('grabaciones', g.id);
       for (const f of await DB.byIndex('fotos', 'obraId', id)) await DB.del('fotos', f.id);
+      // las sesiones se conservan con el título de la obra: en Progreso salen como «Título (borrada)»
+      const obra = await DB.get('obras', id);
       for (const se of await DB.byIndex('sesiones', 'obraId', id)) {
-        se.obraId = null; se.seccionId = null; await DB.put('sesiones', se);
+        se.obraId = null; se.seccionId = null;
+        if (obra) { se.obraBorrada = obra.titulo; se.colorBorrada = obra.color; }
+        await DB.put('sesiones', se);
       }
       await DB.del('obras', id);
     },

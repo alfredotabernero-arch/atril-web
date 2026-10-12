@@ -9,7 +9,7 @@
   'use strict';
   const { u, DB, audio } = A;
 
-  let ctx = null, master = null, bus = null, reverb = null, musicaBus = null;
+  let ctx = null, master = null, bus = null, reverb = null, musicaBus = null, duck = null;
   function iniciarGrafo() {
     if (master) return;
     ctx = audio.contexto();
@@ -17,7 +17,9 @@
     // compresor suave para que al sumar varios ambientes no sature
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.3;
-    master.connect(comp); comp.connect(ctx.destination);
+    // «duck»: baja la relajación mientras habla la voz de la respiración guiada
+    duck = ctx.createGain(); duck.gain.value = 1;
+    master.connect(duck); duck.connect(comp); comp.connect(ctx.destination);
     bus = ctx.createGain(); bus.connect(master);
     reverb = ctx.createConvolver(); reverb.buffer = respuestaSala(3.2);
     const envio = ctx.createGain(); envio.gain.value = 0.55;
@@ -610,6 +612,13 @@
       return v;
     },
     volGeneral(v) { iniciarGrafo(); master.gain.setTargetAtTime(v, ctx.currentTime, 0.1); },
+    /** Mientras habla la voz de la respiración, la música y los sonidos bajan y luego vuelven poco a poco */
+    atenuar(si) {
+      if (!duck) return;
+      const t = ctx.currentTime;
+      duck.gain.cancelScheduledValues(t);
+      duck.gain.setTargetAtTime(si ? 0.35 : 1, t, si ? 0.08 : 0.45);
+    },
 
     pararTodo(seg = 1.2) {
       Object.keys(estado.ambientes).forEach(id => {

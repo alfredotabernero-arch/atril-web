@@ -139,8 +139,8 @@
       // --------- secciones
       main.appendChild(h('div.seccion-titulo', h('h2', 'Secciones'),
         h('div.fila', { style: { gap: '6px' } },
-          h('button.btn.pequeno', { onclick: async () => { if (await A.dialogos.variasSecciones(id)) A.app.refrescar(); } }, 'Varias'),
-          h('button.btn.primario.pequeno', { onclick: async () => { const s = await A.dialogos.seccion(id); if (s) A.app.refrescar(); } }, icono('mas'), 'Añadir'))));
+          h('button.btn.pequeno', { 'data-ayuda': 'varias', onclick: async () => { if (await A.dialogos.variasSecciones(id)) A.app.refrescar(); } }, 'Varias'),
+          h('button.btn.primario.pequeno', { 'data-ayuda': 'anadirSeccion', onclick: async () => { const s = await A.dialogos.seccion(id); if (s) A.app.refrescar(); } }, icono('mas'), 'Añadir'))));
       if (!secciones.length) {
         main.appendChild(h('div.tarjeta.vacio.compacto',
           h('p', { style: { margin: '0 0 6px' } }, h('b', 'Lo recomendable: léela entera primero.'), ' Atril crea una sola sección con toda la obra; cada día apuntas «Hasta el c.» donde llegaste y, cuando la conozcas, la divides en secciones con sentido musical.'),
@@ -199,10 +199,17 @@
       cursor = Math.max(cursor, s.hasta + 1);
     });
     if (cursor <= total) tramo(cursor, total, null);
-    [1, Math.round(total / 2), total].forEach((c, k) => reglas.appendChild(h('span', { style: { left: (k === 0 ? 0 : (c / total * 100)) + '%' } }, c)));
+    // la regla marca el principio y el final; y, en lo que se está leyendo, hasta qué compás se ha leído
+    [1, total].forEach((c, k) => reglas.appendChild(h('span', { style: { left: (k === 0 ? 0 : 100) + '%' } }, c)));
+    const marcas = h('div.mapa-marcas');
+    conRango.filter(s => modelo.faseDe(s) === 'lectura' && (s.leidoHasta || 0) >= s.desde && s.leidoHasta < s.hasta).forEach(s => {
+      const pos = s.leidoHasta / total * 100;
+      marcas.appendChild(h('span' + (pos > 80 ? '.dcha' : pos < 20 ? '.izda' : ''), { style: { left: pos + '%', '--c': modelo.estado('lectura').color }, title: 'Leído hasta el compás ' + s.leidoHasta },
+        h('i'), 'leído hasta c. ' + s.leidoHasta));
+    });
     return h('section.tarjeta',
       h('div.fila', h('h2.crece', 'Mapa de la obra'), h('span.mini.tenue', total + ' compases')),
-      barra, reglas,
+      barra, marcas.childNodes.length ? marcas : null, reglas,
       h('div.leyenda', modelo.FASES.map(f => h('span', h('i', { style: { background: f.color } }), f.nombre))));
   }
 

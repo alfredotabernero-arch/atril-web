@@ -22,6 +22,7 @@
     Metronomo: reg('Metronomo'),
     Pantalla: reg('Pantalla'),
     Fondo: reg('Fondo'),
+    Voz: reg('Voz'),
     App: reg('App'),
     Filesystem: reg('Filesystem'),
     Share: reg('Share')

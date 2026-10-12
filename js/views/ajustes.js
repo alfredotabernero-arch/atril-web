@@ -40,6 +40,8 @@
       main.appendChild(h('section.tarjeta', h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#FF8A3D' } }, A.icono('imagen')), h('h2', 'Apariencia')), segTema,
         A.herr.interruptor('Pantalla de bienvenida al abrir', A.bienvenida.activa(), v => A.bienvenida.poner(v)),
         h('button.enlace', { onclick: () => A.bienvenida.ver() }, 'Ver la pantalla de bienvenida'),
+        A.herr.interruptor('Mostrar ayudas', A.ayuda.activas(), v => A.ayuda.poner(v)),
+        h('p.mini.tenue', { style: { margin: '2px 0 8px' } }, A.nativo.es ? 'Mantén pulsado un botón y te explica qué hace (sin ejecutarlo).' : 'Deja el ratón quieto sobre un botón y te explica qué hace. En el móvil, mantenlo pulsado.'),
         h('p.mini.tenue', { style: { margin: '10px 0 0' } }, 'El ' + A.pitch.nombreLa() + ' de referencia (430–445 Hz) se cambia en Herramientas › Afinador.')));
 
       // ---------- nombres de las notas
@@ -59,6 +61,73 @@
         h('p.mini.tenue', { style: { margin: '2px 0 0' } }, A.nativo && A.nativo.Fondo
           ? 'Mientras suena la relajación, la pantalla se apaga a su tiempo normal y el sonido sigue. Una notificación permite pararlo.'
           : 'Mientras suena la relajación, la pantalla se apaga a su tiempo normal. En iPhone y iPad, al bloquearse puede cortarse el sonido: si pasa, desactiva esta opción.')));
+
+      // ---------- voz de la respiración guiada
+      await A.voz.cargar();
+      const vcfg = A.voz.config();
+      const listaVoz = h('div.voz-lista');
+      let grabando = null;   // { id, rec, stream, t }
+      async function pintarVoz() {
+        const hay = new Set((await A.voz.grabaciones()).map(g => g.id));
+        listaVoz.innerHTML = '';
+        A.voz.PALABRAS.forEach(p => {
+          const enCurso = grabando && grabando.id === p.id;
+          const btnRec = h('button.btn-icono' + (enCurso ? '.grabando' : ''), {
+            'aria-label': enCurso ? 'Parar' : 'Grabar «' + p.texto + '»', title: enCurso ? 'Parar' : 'Grabar',
+            onclick: () => (enCurso ? pararGrab() : grabar(p.id))
+          }, A.icono(enCurso ? 'stop' : 'grabar'));
+          const btnOir = h('button.btn-icono', { 'aria-label': 'Escuchar «' + p.texto + '»', title: 'Escuchar', onclick: async () => { A.voz.desbloquear(); await A.voz.decir(p.id); } }, A.icono('play'));
+          const btnBorrar = hay.has(p.id) ? h('button.btn-icono', {
+            'aria-label': 'Borrar la grabación de «' + p.texto + '»', title: 'Volver a la voz del aparato',
+            onclick: async () => { await A.voz.borrarGrabacion(p.id); pintarVoz(); }
+          }, A.icono('borrar')) : null;
+          listaVoz.appendChild(h('div.voz-fila',
+            h('div.crece', h('b', p.texto), h('div.mini.tenue', enCurso ? 'Grabando… di la palabra y pulsa parar' : hay.has(p.id) ? 'Tu voz' : 'Voz del aparato')),
+            btnOir, btnRec, btnBorrar));
+        });
+      }
+      async function grabar(id) {
+        if (grabando) await pararGrab();
+        if (!window.MediaRecorder) { u.toast('Este aparato no permite grabar'); return; }
+        let stream;
+        try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+        catch (e) { u.toast('No se pudo usar el micrófono'); return; }
+        const tipos = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+        const tipo = tipos.find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+        const rec = new MediaRecorder(stream, tipo ? { mimeType: tipo } : undefined);
+        const trozos = [];
+        rec.ondataavailable = ev => ev.data.size && trozos.push(ev.data);
+        const fin = new Promise(res => (rec.onstop = res));
+        grabando = { id, rec, stream, fin, trozos, t: setTimeout(() => pararGrab(), 4000) };
+        rec.start();
+        pintarVoz();
+      }
+      async function pararGrab() {
+        const g = grabando; if (!g) return;
+        grabando = null; clearTimeout(g.t);
+        if (g.rec.state !== 'inactive') g.rec.stop();
+        await g.fin;
+        g.stream.getTracks().forEach(t => t.stop());
+        try {
+          const wav = await A.voz.recortar(new Blob(g.trozos, { type: g.rec.mimeType || 'audio/webm' }));
+          await A.voz.guardarGrabacion(g.id, wav);
+          await A.voz.decir(g.id);
+        } catch (e) { u.toast('No se ha oído nada: prueba otra vez, más cerca del micrófono'); }
+        pintarVoz();
+      }
+      const segVel = h('div.segmentado', [[0.7, 'Muy despacio'], [0.8, 'Despacio'], [0.95, 'Normal']].map(([v, t]) =>
+        h('button' + (vcfg.velocidad === v ? '.on' : ''), { type: 'button', onclick: async e => {
+          await A.voz.guardar({ velocidad: v });
+          u.$$('button', segVel).forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on');
+          A.voz.desbloquear(); A.voz.decir('inspira');
+        } }, t)));
+      main.appendChild(h('section.tarjeta', h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#FF4F8B' } }, A.icono('respirar')), h('h2', 'Voz de la respiración')),
+        h('p.mini.tenue', { style: { marginTop: 0 } }, 'En Relajación › Respiración guiada, una voz dice «Inspira», «Mantén» y «Espira» y, si quieres, cuenta. De entrada es la voz del aparato; puedes grabar la tuya, o la de quien quieras, palabra por palabra. Lo que no grabes lo dice la voz del aparato.'),
+        h('div.mini', { style: { fontWeight: 800, margin: '6px 0' } }, 'Velocidad de la voz del aparato'), segVel,
+        A.herr.interruptor('Usar las grabaciones', vcfg.propias, v => A.voz.guardar({ propias: v })),
+        listaVoz,
+        h('p.mini.tenue', { style: { margin: '8px 0 0' } }, 'Pulsa ● y di la palabra con calma; pulsa ■ al terminar (se para sola a los 4 segundos). Atril quita el silencio del principio y del final para que suene justo a tiempo. Las grabaciones van en la copia de seguridad.')));
+      pintarVoz();
 
       // ---------- «En el atril»
       const micPref = await DB.kvGet('atrilMicAlCambiar', 'preguntar');
@@ -129,6 +198,7 @@
       if (A.nativo && A.nativo.puedeSalir) {
         main.appendChild(h('button.btn.bloque.btn-salir-grande', { onclick: () => A.app.pedirSalida() }, A.icono('salir'), 'Salir de Atril'));
       }
+      return () => { if (grabando) pararGrab(); };
     }
   };
 

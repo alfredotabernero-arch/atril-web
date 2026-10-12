@@ -694,6 +694,8 @@
     modelo.sesion.on(e => u.pantallaEncendida(!!(e && !e.pausadaEn), 'sesion'));
     await modelo.sesion.cargar();
     A.pitch.ponerNotacion(await DB.kvGet('notacion', 'latina'));
+    await A.ayuda.iniciar();
+    A.voz.cargar();
     if (A.relax) A.relax.on(() => pantalla.revisar());
     if (A.nativo && A.nativo.Fondo) A.nativo.Fondo.addListener('parar', () => { if (A.relax) A.relax.pararTodo(0.3); });
     await pantalla.cargar();

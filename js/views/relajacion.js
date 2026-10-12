@@ -156,6 +156,14 @@
       }
     }, r.nombre)));
     descResp.textContent = RESPIRACIONES[resp].desc;
+    // voz: «Inspira / Mantén / Espira» y, si quieres, la cuenta
+    const vc0 = await A.voz.cargar();
+    const chkContar = A.herr.interruptor('Contar en voz alta', vc0.contar, v => A.voz.guardar({ contar: v }));
+    const chkVoz = A.herr.interruptor('Guía con voz', vc0.voz, v => { A.voz.guardar({ voz: v }); chkContar.style.display = v ? '' : 'none'; if (!v) A.voz.callar(); });
+    chkContar.style.display = vc0.voz ? '' : 'none';
+    const notaVoz = h('p.mini.tenue', { style: { margin: '4px 0 0' } },
+      A.voz.disponibleAparato() ? 'Mientras habla, la música y los sonidos bajan un poco. Puedes grabar tu propia voz en ' : 'Este aparato no tiene voz sintetizada: graba tu voz en ',
+      h('a', { href: '#/ajustes' }, 'Ajustes › Voz de la respiración'), '.');
     function fase(i) {
       if (!respActiva) return;
       const fs = RESPIRACIONES[resp].fases, [nombre, seg] = fs[i % fs.length];
@@ -163,21 +171,30 @@
       circulo.querySelector('.resp-fase').textContent = nombre;
       circulo.style.transitionDuration = seg + 's';
       circulo.className = 'resp-circulo ' + (nombre === 'Inspira' ? 'grande' : nombre === 'Espira' ? 'pequeno' : circulo.classList.contains('grande') ? 'grande' : 'pequeno');
-      let quedan = seg;
+      let quedan = seg, paso = 1;
       const cuenta = circulo.querySelector('.resp-cuenta');
       cuenta.textContent = quedan;
+      const vc = A.voz.config();
+      if (vc.voz) A.voz.decir(A.voz.clave(nombre));
       clearInterval(tCuenta);
-      tCuenta = setInterval(() => { quedan--; if (quedan > 0) cuenta.textContent = quedan; }, 1000);
+      tCuenta = setInterval(() => {
+        quedan--; paso++;
+        if (quedan > 0) cuenta.textContent = quedan;
+        // la cuenta en voz alta: «Inspira… dos, tres, cuatro»
+        if (quedan > 0 && vc.voz && vc.contar && paso <= 8) A.voz.decir(A.voz.clave(paso));
+      }, 1000);
       if (navigator.vibrate) navigator.vibrate(15);
       tResp = setTimeout(() => fase(i + 1), seg * 1000);
     }
     function empezarResp() {
       respActiva = true; ciclos = 0;
+      if (A.voz.config().voz) A.voz.desbloquear();
       btnResp.replaceChildren(icono('stop'), 'Parar');
       fase(0);
     }
     function pararResp() {
       respActiva = false;
+      if (A.voz) A.voz.callar();
       clearTimeout(tResp); clearInterval(tCuenta);
       circulo.className = 'resp-circulo';
       circulo.style.transitionDuration = '1s';
@@ -191,7 +208,8 @@
       segResp,
       h('div.resp-caja', circulo),
       descResp,
-      h('div.fila', { style: { justifyContent: 'center', marginTop: '12px' } }, btnResp)));
+      h('div.fila', { style: { justifyContent: 'center', marginTop: '12px' } }, btnResp),
+      h('div', { style: { marginTop: '14px' } }, chkVoz, chkContar, notaVoz)));
 
     /* ---------------- estado ---------------- */
     function pintarEstado() {

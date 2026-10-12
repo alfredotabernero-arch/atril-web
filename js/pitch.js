@@ -88,8 +88,9 @@
    * ------------------------------------------------------------------ */
   const INSTRUMENTOS = {
     cromatico: { nombre: 'Cromático (cualquier nota)', cuerdas: [] },
-    bandurria: { nombre: 'Bandurria', cuerdas: ['La4', 'Mi4', 'Si3', 'Fa#3', 'Do#3', 'Sol#2'] },
-    laud: { nombre: 'Laúd español', cuerdas: ['La3', 'Mi3', 'Si2', 'Fa#2', 'Do#2', 'Sol#1'] },
+    // la sexta, en Sol natural (lo habitual hoy); quien la afine en Sol♯ tiene un atajo en el afinador
+    bandurria: { nombre: 'Bandurria', cuerdas: ['La4', 'Mi4', 'Si3', 'Fa#3', 'Do#3', 'Sol2'], atajos: [{ nombre: 'Sexta en Sol♯', cuerda: 5, semitonos: 1 }] },
+    laud: { nombre: 'Laúd español', cuerdas: ['La3', 'Mi3', 'Si2', 'Fa#2', 'Do#2', 'Sol1'], atajos: [{ nombre: 'Sexta en Sol♯', cuerda: 5, semitonos: 1 }] },
     guitarra: { nombre: 'Guitarra', cuerdas: ['Mi4', 'Si3', 'Sol3', 'Re3', 'La2', 'Mi2'] },
     mandolina: { nombre: 'Mandolina', cuerdas: ['Mi5', 'La4', 'Re4', 'Sol3'] },
     violin: { nombre: 'Violín', cuerdas: ['Mi5', 'La4', 'Re4', 'Sol3'] },
@@ -109,6 +110,17 @@
     return out;
   }
 
+  /**
+   * Afinación de un instrumento en notas MIDI (de la cuerda más aguda a la más grave).
+   * personal: { instrumento: [midi, …] } con las afinaciones cambiadas por el usuario.
+   */
+  const habitual = id => (INSTRUMENTOS[id] ? INSTRUMENTOS[id].cuerdas.map(midiDeNombre) : []);
+  function afinacion(id, personal) {
+    const base = habitual(id), p = personal && personal[id];
+    return Array.isArray(p) && p.length === base.length ? p.slice() : base;
+  }
+  const esPersonal = (id, personal) => { const a = afinacion(id, personal), b = habitual(id); return a.some((m, i) => m !== b[i]); };
+
   A.pitch = { diezmar, yin, frecMidi, midiDeFrec, midiDeNombre, nombreMidi, soloNombre, INSTRUMENTOS, NOMBRES,
-    ponerNotacion, notacion, nombres, nombreLa, nombreTexto };
+    ponerNotacion, notacion, nombres, nombreLa, nombreTexto, habitual, afinacion, esPersonal };
 })(window.Atril);

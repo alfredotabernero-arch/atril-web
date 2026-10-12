@@ -43,18 +43,47 @@
 
     const selInstr = h('select', { value: instr }, Object.entries(pitch.INSTRUMENTOS).map(([k, v]) => h('option', { value: k }, v.nombre)));
     const cuerdas = h('div.cuerdas');
-    selInstr.addEventListener('change', () => { instr = selInstr.value; DB.kvSet('afinInstrumento', instr); pintarCuerdas(); });
+    // afinaciones cambiadas por el usuario: { instrumento: [midi…] } (las mismas en el afinador de «En el atril»)
+    let personal = await DB.kvGet('afinaciones', {}) || {};
+    let editando = false;
+    const midis = () => pitch.afinacion(instr, personal);
+    const guardarAfin = l => {
+      const base = pitch.habitual(instr);
+      personal = Object.assign({}, personal);
+      if (l.every((m, i) => m === base[i])) delete personal[instr]; else personal[instr] = l;
+      DB.kvSet('afinaciones', personal);
+      pintarCuerdas();
+    };
+    const opcionesAfin = h('div.afin-opciones');
+    selInstr.addEventListener('change', () => { instr = selInstr.value; editando = false; DB.kvSet('afinInstrumento', instr); pintarCuerdas(); });
 
     function pintarCuerdas() {
       cuerdas.innerHTML = '';
       const def = pitch.INSTRUMENTOS[instr];
-      def.cuerdas.forEach((n, i) => {
-        const m = pitch.midiDeNombre(n);
+      const l = midis(), base = pitch.habitual(instr);
+      cuerdas.classList.toggle('editando', editando);
+      l.forEach((m, i) => {
         const f = pitch.frecMidi(m, la);
-        cuerdas.appendChild(h('button.cuerda', { type: 'button', 'data-midi': m, title: 'Escuchar ' + pitch.nombreTexto(n), onclick: () => audio.tono(f, 2.2) },
-          pitch.soloNombre(m), h('small', `${i + 1}ª · ${f.toFixed(1)}`)));
+        const btn = h('button.cuerda' + (m !== base[i] ? '.cambiada' : ''), { type: 'button', 'data-midi': m, title: 'Escuchar ' + pitch.nombreMidi(m), onclick: () => audio.tono(f, 2.2) },
+          pitch.soloNombre(m), h('small', `${i + 1}ª · ${f.toFixed(1)}`));
+        if (!editando) { cuerdas.appendChild(btn); return; }
+        const mover = d => { const n = midis(); n[i] = u.clamp(n[i] + d, base[i] - 12, base[i] + 12); guardarAfin(n); audio.tono(pitch.frecMidi(n[i], la), 1.2); };
+        cuerdas.appendChild(h('div.cuerda-ed',
+          h('button.btn-icono.mini', { type: 'button', 'aria-label': 'Bajar un semitono', title: 'Bajar un semitono', onclick: () => mover(-1) }, '−'),
+          btn,
+          h('button.btn-icono.mini', { type: 'button', 'aria-label': 'Subir un semitono', title: 'Subir un semitono', onclick: () => mover(1) }, '+')));
       });
-      if (!def.cuerdas.length) cuerdas.appendChild(h('p.mini.tenue', 'Detecta cualquier nota. Elige un instrumento para ver sus cuerdas y escuchar cada una.'));
+      opcionesAfin.innerHTML = '';
+      if (!def.cuerdas.length) { cuerdas.appendChild(h('p.mini.tenue', 'Detecta cualquier nota. Elige un instrumento para ver sus cuerdas y escuchar cada una.')); return; }
+      const pers = pitch.esPersonal(instr, personal);
+      opcionesAfin.append(...[
+        h('button.btn' + (editando ? '.primario' : ''), { type: 'button', 'data-ayuda': 'cambiarAfinacion', onclick: () => { editando = !editando; pintarCuerdas(); } }, editando ? 'Hecho' : 'Cambiar afinación'),
+        ...(def.atajos || []).map(a => {
+          const on = l[a.cuerda] === base[a.cuerda] + a.semitonos;
+          return h('button.btn' + (on ? '.activo' : ''), { type: 'button', onclick: () => { const n = midis(); n[a.cuerda] = on ? base[a.cuerda] : base[a.cuerda] + a.semitonos; guardarAfin(n); } }, (on ? '✓ ' : '') + a.nombre);
+        }),
+        pers ? h('button.btn', { type: 'button', onclick: () => { personal = Object.assign({}, personal); delete personal[instr]; DB.kvSet('afinaciones', personal); pintarCuerdas(); } }, 'Restablecer') : null,
+        pers ? h('span.chip', 'Afinación personalizada') : null].filter(Boolean));
     }
 
     main.appendChild(h('section.tarjeta.afinador',
@@ -70,7 +99,7 @@
       h('p.mini.tenue', { style: { margin: '8px 0 0' } }, '440 Hz es el estándar; muchas orquestas afinan a 442. Este ' + pitch.nombreLa() + ' se usa también en la nota pedal.')));
     main.appendChild(h('section.tarjeta',
       h('h2', 'Instrumento'),
-      selInstr, cuerdas));
+      selInstr, cuerdas, opcionesAfin));
     setLa(la);
 
     // ---------- captura y análisis
