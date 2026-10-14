@@ -378,7 +378,9 @@
 
   /** Datos completos de la cartera (obras + secciones + minutos) */
   async function cartera() {
-    const [obras, secciones, sesiones] = await Promise.all([DB.all('obras'), DB.all('secciones'), DB.all('sesiones')]);
+    const [obras, secciones, sesiones, tomas] = await Promise.all([DB.all('obras'), DB.all('secciones'), DB.all('sesiones'), DB.all('tomas').catch(() => [])]);
+    const tomasObra = {};
+    tomas.forEach(t => { if (t.obraId) (tomasObra[t.obraId] = tomasObra[t.obraId] || []).push(t); });
     const porObra = {};
     secciones.forEach(s => (porObra[s.obraId] = porObra[s.obraId] || []).push(s));
     Object.values(porObra).forEach(l => l.sort((a, b) => (a.orden || 0) - (b.orden || 0)));
@@ -388,7 +390,7 @@
       const secs = porObra[o.id] || [];
       const progreso = progresoObra(o, secs);
       const est = estadoObra(o, secs);
-      return { obra: o, secciones: secs, progreso, estado: est, minutos: minObra[o.id] || 0, ritmo: ritmoObra(o, progreso, est) };
+      return { obra: o, secciones: secs, progreso, estado: est, minutos: minObra[o.id] || 0, ritmo: ritmoObra(o, progreso, est), tomas: tomasObra[o.id] || [] };
     }).sort((a, b) => {
       const arch = (a.obra.estado === 'archivada') - (b.obra.estado === 'archivada');
       if (arch) return arch;
@@ -511,7 +513,14 @@
         else if (dias === 1) motivos.push({ t: 'Ayer', c: 'info' });
         else if (dias === 0) motivos.push({ t: 'Ya trabajada hoy', c: 'info' });
         if (urg) { p += urg; motivos.push({ t: c.ritmo.nivel === 'justa' ? 'Obra justa de tiempo' : 'Obra retrasada', c: 'mal' }); }
-        if (maestria(s) >= 1 && !pend) p -= 6;
+        // Escuchar (3.0): lo que suena inseguro sube; lo que suena seguro baja
+        const conf = A.escuchar && c.tomas && c.tomas.length ? A.escuchar.deSeccion(s, c.tomas) : null;
+        if (conf) {
+          p += (70 - conf.valor) / 7;
+          const mc = { t: (conf.medida === 'fluidez' ? 'Fluidez ' : 'Confianza ') + conf.valor + ' %', c: conf.valor < 50 ? 'mal' : 'aviso' };
+          if (conf.valor < 60) motivos.unshift(mc); else if (conf.valor < 80) motivos.push(mc);
+        }
+        if (maestria(s) >= 1 && !pend && !(conf && conf.valor < 60)) p -= 6;
         lista.push({ c, s, puntos: p, motivos, hoy: dias === 0 });
       });
       // pasajes difíciles sin resolver: se proponen por sí mismos, aunque no haya secciones
@@ -523,6 +532,8 @@
         if (dias === null) { p += 3; motivos.push({ t: 'Sin trabajarlo aún', c: 'info' }); }
         else if (dias >= 2) { p += Math.min(5, dias * 0.6); motivos.push({ t: 'Hace ' + dias + ' días', c: 'info' }); }
         else if (dias === 1) motivos.push({ t: 'Ayer', c: 'info' });
+        const confP = A.escuchar && c.tomas && c.tomas.length ? A.escuchar.dePasaje(pa, c.tomas) : null;
+        if (confP) { p += (70 - confP.valor) / 7; motivos.unshift({ t: 'Confianza ' + confP.valor + ' %', c: confP.valor < 50 ? 'mal' : confP.valor < 80 ? 'aviso' : 'bien' }); }
         if (pa.nota) motivos.push({ t: pa.nota.length > 28 ? pa.nota.slice(0, 26) + '…' : pa.nota, c: 'info' });
         if (urg) p += urg;
         lista.push({ c, s: sec, pasaje: pa, puntos: p, motivos, hoy: dias === 0 });

@@ -62,8 +62,8 @@
       main.appendChild(h('div.segmentado', { style: { marginBottom: '14px' } }, PERIODOS.map(p =>
         h('button' + (p.id === per.id ? '.on' : ''), { onclick: () => (location.hash = '#/estadisticas/' + p.id) }, p.nombre))));
 
-      const [plan, sesiones, obras, secciones, tempos] = await Promise.all([
-        modelo.plan(), DB.all('sesiones'), DB.all('obras'), DB.all('secciones'), DB.all('tempos')]);
+      const [plan, sesiones, obras, secciones, tempos, tomas] = await Promise.all([
+        modelo.plan(), DB.all('sesiones'), DB.all('obras'), DB.all('secciones'), DB.all('tempos'), DB.all('tomas').catch(() => [])]);
       if (!sesiones.length) {
         main.appendChild(h('div.tarjeta.vacio', h('h3', 'Aún no hay datos'), h('p', 'Cuando registres sesiones de estudio verás aquí tu evolución: tiempo previsto frente a real, reparto por obras y progreso del tempo.')));
         return;
@@ -150,6 +150,23 @@
             h('span.valor', u.minutos(m)));
         }),
         h('p.mini.tenue', { style: { margin: '8px 0 0' } }, 'Toca una fila para ver sus sesiones y, si alguna se apuntó donde no era, pasarla a otra obra.')));
+
+      // ---------- escuchar (3.0)
+      const tomasPer = tomas.filter(t => t.inicio >= desde.getTime() && t.puntuacion != null);
+      if (tomasPer.length) {
+        const conf = tomasPer.filter(t => t.medida !== 'fluidez');
+        const flu = tomasPer.filter(t => t.medida === 'fluidez');
+        const pasadas = tomasPer.filter(t => t.modo === 'concierto');
+        const media = l => l.length ? Math.round(l.reduce((a, t) => a + t.puntuacion, 0) / l.length) : null;
+        main.appendChild(h('section.tarjeta', h('h2', 'Escuchar'),
+          h('div.metricas',
+            h('div.metrica', h('b', tomasPer.length), h('span', tomasPer.length === 1 ? 'escucha' : 'escuchas')),
+            h('div.metrica', h('b', conf.length ? media(conf) + '%' : '—'), h('span', 'confianza media')),
+            flu.length ? h('div.metrica', h('b', media(flu) + '%'), h('span', 'fluidez de lectura'))
+              : h('div.metrica', h('b', pasadas.filter(t => !t.paradas.length).length + '/' + pasadas.length), h('span', 'pasadas limpias'))),
+          h('div.grafico', { style: { marginTop: '10px' } }, A.escucharUI.grafico(tomasPer, 130)),
+          h('p.mini.tenue', { style: { margin: '8px 0 0' } }, 'Cada punto es una escucha, del color de su resultado. En cada obra y en cada sección tienes su evolución.')));
+      }
 
       // ---------- hábitos
       const porSemanaDia = [0, 0, 0, 0, 0, 0, 0], porFranja = { 'mañana': 0, 'tarde': 0, 'noche': 0 };

@@ -388,6 +388,10 @@
     hermanas.forEach((x, i) => { if (i > pos) x.orden = i + 1; });
     for (const x of hermanas.slice(pos + 1)) await DB.put('secciones', x);
     const creada = await DB.put('secciones', nueva);
+    // las escuchas de la segunda parte se van con ella
+    for (const t of await DB.byIndex('tomas', 'seccionId', sec.id)) {
+      if (t.desde >= r) { t.seccionId = creada.id; await DB.put('tomas', t); }
+    }
     u.toast('Sección dividida en dos ✓');
     return creada;
   }
@@ -418,6 +422,7 @@
     for (const f of await DB.byIndex('fotos', 'seccionId', sig.id)) { f.seccionId = sec.id; await DB.put('fotos', f); }
     for (const t of await DB.byIndex('tempos', 'seccionId', sig.id)) { t.seccionId = sec.id; await DB.put('tempos', t); }
     for (const g of (await DB.byIndex('grabaciones', 'obraId', sec.obraId)).filter(x => x.seccionId === sig.id)) { g.seccionId = sec.id; await DB.put('grabaciones', g); }
+    for (const t of await DB.byIndex('tomas', 'seccionId', sig.id)) { t.seccionId = sec.id; await DB.put('tomas', t); }
     for (const s of await DB.byIndex('sesiones', 'obraId', sec.obraId)) {
       let cambio = false;
       if (s.seccionId === sig.id) { s.seccionId = sec.id; cambio = true; }

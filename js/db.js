@@ -3,7 +3,7 @@
   'use strict';
 
   const NOMBRE = 'atril';
-  const VERSION = 4;
+  const VERSION = 5;   // 5 (Atril 3.0): almacén «tomas» (lo que se ha escuchado con Escuchar)
   const STORES = {
     obras: [],
     secciones: ['obraId'],
@@ -13,6 +13,7 @@
     fotos: ['seccionId', 'obraId'],
     pistas: [],
     voces: [],
+    tomas: ['obraId', 'seccionId'],
     kv: []
   };
 
@@ -101,6 +102,7 @@
       }
       for (const g of await DB.byIndex('grabaciones', 'obraId', id)) await DB.del('grabaciones', g.id);
       for (const f of await DB.byIndex('fotos', 'obraId', id)) await DB.del('fotos', f.id);
+      for (const t of await DB.byIndex('tomas', 'obraId', id)) await DB.del('tomas', t.id);
       // las sesiones se conservan con el título de la obra: en Progreso salen como «Título (borrada)»
       const obra = await DB.get('obras', id);
       for (const se of await DB.byIndex('sesiones', 'obraId', id)) {
@@ -115,6 +117,8 @@
     async borrarSeccion(id) {
       for (const t of await DB.byIndex('tempos', 'seccionId', id)) await DB.del('tempos', t.id);
       for (const f of await DB.byIndex('fotos', 'seccionId', id)) await DB.del('fotos', f.id);
+      // las escuchas se quedan en la obra, con sus compases
+      for (const t of await DB.byIndex('tomas', 'seccionId', id)) { t.seccionId = null; await DB.put('tomas', t); }
       await DB.del('secciones', id);
     },
 

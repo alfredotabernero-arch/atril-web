@@ -261,22 +261,35 @@
         indAfin.className = 'atril-afin-ind activo ' + (ac < 3 ? 'ok' : ac < 12 ? 'cerca' : 'lejos');
       }
 
-      // ---------- barra de abajo: elegir metrónomo o afinador
-      let herr = await DB.kvGet('atrilHerramienta', 'metronomo');
+      // ---------- escuchar (Atril 3.0): el micrófono escucha cómo tocas y hace un informe
+      const panelEsc = A.escucharUI.panelAtril({
+        obra, sec, pasajes: pasajesSec,
+        pasajeActivo: () => modelo.sesion.estado && modelo.sesion.estado.pasajeId,
+        alEmpezar: async () => {
+          if (M.activo) { await M.parar(); u.toast('El metrónomo se para mientras escucho: sus clics se confundirían con tus notas', 2600); }
+          apagarAfinador();
+        }
+      });
+      const filaEsc = h('div.atril-esc', panelEsc.nodo);
+
+      // ---------- barra de abajo: elegir metrónomo, afinador o escuchar
+      let herr = params[1] === 'escuchar' ? 'escuchar' : await DB.kvGet('atrilHerramienta', 'metronomo');
       const btnDestello = h('button.chip-herr', { type: 'button', title: 'La pantalla parpadea en cada pulso', onclick: () => { cfg.destello = !cfg.destello; guardarCfg(); pintarHerr(); } }, icono('rayo'), 'Destello');
       const selHerr = h('div.atril-herr-sel');
       const pintarHerr = () => {
-        selHerr.replaceChildren(...[['metronomo', 'Metrónomo', 'metronomo'], ['afinador', 'Afinador', 'afinador']].map(([id, txt, ic]) =>
+        selHerr.replaceChildren(...[['metronomo', 'Metrónomo', 'metronomo'], ['afinador', 'Afinador', 'afinador'], ['escuchar', 'Escuchar', 'oido']].map(([id, txt, ic]) =>
           h('button' + (herr === id ? '.on' : ''), { type: 'button', onclick: () => cambiarHerr(id) }, icono(ic), txt)));
         btnDestello.classList.toggle('on', !!cfg.destello);
         btnDestello.style.display = herr === 'metronomo' ? '' : 'none';
         filaMetro.style.display = herr === 'metronomo' ? '' : 'none';
         filaAfin.style.display = herr === 'afinador' ? '' : 'none';
+        filaEsc.style.display = herr === 'escuchar' ? '' : 'none';
       };
       const cambiarHerr = id => {
         if (id === herr) return;
         herr = id; DB.kvSet('atrilHerramienta', id);
         if (id !== 'afinador') apagarAfinador();
+        if (id !== 'escuchar' && panelEsc.activo()) panelEsc.parar();
         pintarHerr();
       };
       pintarHerr();
@@ -300,12 +313,12 @@
       }
       main.appendChild(h('footer.atril-pie', { style: { '--c': color } },
         h('div.atril-herr-barra', selHerr, h('span.crece'), btnDestello),
-        filaMetro, filaAfin));
+        filaMetro, filaAfin, filaEsc));
 
       // ---------- teclado (PC)
       const teclas = ev => {
         if (/input|select|textarea/i.test(ev.target.tagName) || document.querySelector('.modal-fondo, .visor')) return;
-        if (ev.code === 'Space') { ev.preventDefault(); (herr === 'afinador' ? btnMic : play).click(); }
+        if (ev.code === 'Space') { ev.preventDefault(); if (herr === 'escuchar') panelEsc.alternar(); else (herr === 'afinador' ? btnMic : play).click(); }
         else if (ev.key === 'ArrowUp') { ev.preventDefault(); setBpm(cfg.bpm + (ev.shiftKey ? 5 : 1)); }
         else if (ev.key === 'ArrowDown') { ev.preventDefault(); setBpm(cfg.bpm - (ev.shiftKey ? 5 : 1)); }
         else if (ev.key === 'ArrowRight' && sig) location.hash = '#/atril/' + sig.id;
@@ -323,6 +336,7 @@
         // al pasar a otra sección del atril, el micrófono se queda abierto y la nueva vista decide; si no, se apaga
         if (!(mic && herr === 'afinador' && /^#\/atril\//.test(location.hash))) soltarMic();
         flash.remove();
+        if (panelEsc.activo()) panelEsc.parar();   // al salir escuchando, la escucha se guarda
       };
     }
   };

@@ -87,8 +87,8 @@
           }
         }, icono('borrar')));
 
-      const [secciones, sesiones, grabaciones, fotos] = await Promise.all([
-        DB.byIndex('secciones', 'obraId', id), DB.byIndex('sesiones', 'obraId', id), DB.byIndex('grabaciones', 'obraId', id), DB.byIndex('fotos', 'obraId', id)]);
+      const [secciones, sesiones, grabaciones, fotos, tomas] = await Promise.all([
+        DB.byIndex('secciones', 'obraId', id), DB.byIndex('sesiones', 'obraId', id), DB.byIndex('grabaciones', 'obraId', id), DB.byIndex('fotos', 'obraId', id), A.escuchar.deObra(id)]);
       secciones.sort((a, b) => (a.orden || 0) - (b.orden || 0));
       sesiones.sort((a, b) => b.inicio - a.inicio);
       const fotosSec = {};
@@ -135,10 +135,10 @@
 
       // --------- mapa de la obra
       const pasajes = modelo.pasajesDe(obra);
-      if (secciones.some(s => s.desde && s.hasta) || (pasajes.length && obra.compases)) main.appendChild(h('div.no-sencillo', mapaObra(secciones, obra)));
+      if (secciones.some(s => s.desde && s.hasta) || (pasajes.length && obra.compases)) main.appendChild(h('div.no-sencillo', mapaObra(secciones, obra, tomas)));
 
       // --------- pasajes difíciles (por compases, sin necesidad de secciones)
-      main.appendChild(tarjetaPasajes(obra, secciones));
+      main.appendChild(tarjetaPasajes(obra, secciones, tomas));
 
       // --------- secciones
       main.appendChild(h('div.seccion-titulo', h('h2', 'Secciones'),
@@ -153,11 +153,14 @@
           h('button.btn', { onclick: async () => { if (await A.dialogos.variasSecciones(id)) A.app.refrescar(); } }, 'Crear secciones por compases')));
       } else {
         const lista = h('div.lista-secciones');
-        secciones.forEach((s, i) => lista.appendChild(tarjetaSeccion(s, i, secciones, obra, fotosSec[s.id] || [])));
+        secciones.forEach((s, i) => lista.appendChild(tarjetaSeccion(s, i, secciones, obra, fotosSec[s.id] || [], tomas)));
         main.appendChild(lista);
         if (sinSeccion) main.appendChild(h('p.mini.tenue.no-sencillo', { style: { margin: '-4px 6px 12px' } },
           `Quedan ${sinSeccion} compases de la obra sin sección: cuentan como «Sin empezar» en el progreso.`));
       }
+
+      // --------- escuchar y modo concierto (3.0)
+      main.appendChild(A.escucharUI.tarjetaObra(obra, secciones, tomas));
 
       // --------- grabaciones
       if (grabaciones.length) {
@@ -177,16 +180,20 @@
   };
 
   /** Pasajes difíciles de la obra: marcados por compases; los resueltos quedan en el historial */
-  function tarjetaPasajes(obra, secciones) {
+  function tarjetaPasajes(obra, secciones, tomas) {
     const activos = modelo.pasajesDe(obra);
     const resueltos = modelo.pasajesDe(obra, true).filter(p => p.resuelto).sort((a, b) => b.resuelto - a.resuelto);
     const enCurso = modelo.sesion.estado && modelo.sesion.estado.pasajeId;
+    const confTxt = p => {
+      const c = tomas && A.escuchar.dePasaje(p, tomas);
+      return c ? h('span.esc-mini.peq', { style: { background: A.escuchar.color(c.valor) }, title: 'Confianza según tus escuchas' }, A.sencillo && A.sencillo.activo ? '★' + A.escuchar.estrellas(c.valor) : c.valor + ' %') : null;
+    };
     const fila = p => {
       const sec = modelo.seccionDePasaje(secciones, p);
       const meta = [sec ? 'en ' + (sec.letra ? sec.letra + ' · ' : '') + sec.nombre : null,
         p.resuelto ? 'resuelto el ' + u.fechaCorta(p.resuelto) : p.trabajado ? 'trabajado ' + cuando(p.trabajado) : 'sin trabajar aún'].filter(Boolean).join(' · ');
       return h('li', h('div.item.pasaje' + (p.resuelto ? '.resuelto' : '') + (p.id === enCurso ? '.activo' : ''),
-        h('div.crece', h('div', h('span.pasaje-rango', '⚡ ' + modelo.textoPasaje(p)), p.nota ? h('span.pasaje-nota', p.nota) : null), h('div.mini.tenue', { style: { marginTop: '4px' } }, meta)),
+        h('div.crece', h('div', h('span.pasaje-rango', '⚡ ' + modelo.textoPasaje(p)), p.nota ? h('span.pasaje-nota', p.nota) : null), h('div.mini.tenue', { style: { marginTop: '4px' } }, meta, confTxt(p))),
         p.resuelto ? h('button.btn.pequeno', { onclick: async () => { await modelo.marcarPasajes(obra.id, [p.id], { resuelto: null }); A.app.refrescar(); } }, 'Reabrir')
           : h('button.btn-icono', { 'aria-label': 'Estudiar el pasaje', title: 'Estudiar', onclick: () => A.dialogos.estudiarPasaje(obra, p, secciones) }, icono('play')),
         h('button.btn-icono', { 'aria-label': 'Más opciones del pasaje', title: 'Editar', onclick: () => opciones(p) }, icono('editar'))));
@@ -220,7 +227,8 @@
   }
 
   /** Barra con todos los compases de la obra, coloreada por la fase de cada sección */
-  function mapaObra(secciones, obra) {
+  let mapaPorConfianza = false;
+  function mapaObra(secciones, obra, tomas) {
     const conRango = secciones.filter(s => s.desde && s.hasta).sort((a, b) => a.desde - b.desde);
     const pasajes = modelo.pasajesDe(obra);
     const total = Math.max(Number(obra && obra.compases) || 0, ...conRango.map(s => s.hasta), ...pasajes.map(p => p.hasta));
@@ -232,13 +240,15 @@
       if (!s) { barra.appendChild(h('div.mapa-hueco', { style: { width: w + '%' }, title: `c. ${desde}–${hasta}: sin sección` })); return; }
       const et = s.letra || String(secciones.indexOf(s) + 1);
       const f = modelo.estado(modelo.faseDe(s));
+      const conf = mapaPorConfianza ? A.escuchar.deSeccion(s, tomas || []) : null;
       // en «Leyendo», la parte leída va en color y el resto más claro
-      const fondo = f.id === 'lectura'
+      const fondo = mapaPorConfianza ? (conf ? A.escuchar.color(conf.valor) : 'repeating-linear-gradient(45deg, var(--tinta-3) 0 5px, color-mix(in srgb, var(--tinta-3) 60%, var(--superficie)) 5px 10px)')
+        : f.id === 'lectura'
         ? `linear-gradient(90deg, ${f.color} ${modelo.fraccionLeida(s) * 100}%, color-mix(in srgb, ${f.color} 35%, var(--superficie)) ${modelo.fraccionLeida(s) * 100}%)`
         : f.color;
       barra.appendChild(h('a.mapa-tramo', {
         href: '#/seccion/' + s.id, style: { width: w + '%', background: fondo },
-        title: `${s.nombre} · ${modelo.rangoTexto(s)} · ${f.nombre}` + (f.id === 'lectura' ? ` (${modelo.compasesLeidos(s)} c. leídos)` : '')
+        title: `${s.nombre} · ${modelo.rangoTexto(s)} · ` + (mapaPorConfianza ? (conf ? (conf.medida === 'fluidez' ? 'fluidez ' : 'confianza ') + conf.valor + ' %' : 'sin escuchar') : f.nombre + (f.id === 'lectura' ? ` (${modelo.compasesLeidos(s)} c. leídos)` : ''))
       }, w > 4 ? et : ''));
     };
     conRango.forEach(s => {
@@ -260,19 +270,27 @@
       style: { left: ((p.desde - 1) / total * 100) + '%', width: Math.max(1.2, (p.hasta - p.desde + 1) / total * 100) + '%' },
       title: 'Pasaje difícil ' + modelo.textoPasaje(p) + (p.nota ? ': ' + p.nota : '')
     }))) : null;
-    return h('section.tarjeta',
-      h('div.fila', h('h2.crece', 'Mapa de la obra'), h('span.mini.tenue', total + ' compases')),
-      barra, capaPas, marcas.childNodes.length ? marcas : null, reglas,
-      h('div.leyenda', modelo.FASES.map(f => h('span', h('i', { style: { background: f.color } }), f.nombre)),
-        pasajes.length ? h('span', h('i.pas'), 'Pasaje difícil') : null));
+    const hayTomas = tomas && tomas.some(t => t.seccionId);
+    const selMapa = hayTomas ? h('div.segmentado.mini-seg', [[false, 'Fases'], [true, 'Confianza']].map(([v, t]) =>
+      h('button' + (mapaPorConfianza === v ? '.on' : ''), { type: 'button', onclick: () => { mapaPorConfianza = v; const nuevo = mapaObra(secciones, obra, tomas); tarjeta.replaceWith(nuevo); } }, t))) : null;
+    const leyenda = mapaPorConfianza
+      ? h('div.leyenda', [[30, 'Insegura'], [50, 'Con dudas'], [70, 'Bastante segura'], [90, 'Muy segura']].map(([v, t]) => h('span', h('i', { style: { background: A.escuchar.color(v) } }), t)),
+          h('span', h('i', { style: { background: 'var(--tinta-3)' } }), 'Sin escuchar'))
+      : h('div.leyenda', modelo.FASES.map(f => h('span', h('i', { style: { background: f.color } }), f.nombre)),
+        pasajes.length ? h('span', h('i.pas'), 'Pasaje difícil') : null);
+    const tarjeta = h('section.tarjeta',
+      h('div.fila', h('h2.crece', 'Mapa de la obra'), selMapa || h('span.mini.tenue', total + ' compases')),
+      barra, capaPas, !mapaPorConfianza && marcas.childNodes.length ? marcas : null, reglas, leyenda);
+    return tarjeta;
   }
 
-  function tarjetaSeccion(s, i, todas, obra, fotos) {
+  function tarjetaSeccion(s, i, todas, obra, fotos, tomas) {
     const prog = modelo.progresoSeccion(s);
     const pend = modelo.pendientes(s).length;
     const dom = s.dominio || 0;
     const fase = modelo.estado(modelo.faseDe(s));
     const npas = modelo.pasajesEnSeccion(obra, s).length;
+    const conf = tomas && tomas.length ? A.escuchar.deSeccion(s, tomas) : null;
     const tempo = s.tempoObjetivo ? `♩ ${s.tempoActual || '—'}/${s.tempoObjetivo}` : (s.tempoActual ? `♩ ${s.tempoActual}` : '');
     const mover = async (e, d) => {
       e.preventDefault(); e.stopPropagation();
@@ -297,6 +315,7 @@
             fase.id === 'lectura' ? (modelo.fraccionLeida(s) >= 1 ? 'Leída entera · pásala a Montando' : `Leyendo · ${Math.round(modelo.fraccionLeida(s) * 100)} %`) : fase.id === 'pendiente' || fase.id === 'lista' ? fase.nombre : `${fase.nombre} · ${pct(prog)}`),
           fase.id !== 'pendiente' && fase.id !== 'lectura' ? h('span.estrellas.no-sencillo', '★'.repeat(dom), h('span', '★'.repeat(5 - dom))) : null,
           pend ? h('span.chip.acento', '✓ ' + pend) : null,
+          conf ? h('span.chip', { style: { background: `color-mix(in srgb, ${A.escuchar.color(conf.valor)} 20%, transparent)` }, title: (conf.medida === 'fluidez' ? 'Fluidez' : 'Confianza') + ' según tus escuchas' }, '👂 ' + (A.sencillo && A.sencillo.activo ? '★' + A.escuchar.estrellas(conf.valor) : conf.valor + ' %')) : null,
           npas ? h('span.chip.aviso', { title: npas === 1 ? '1 pasaje difícil' : npas + ' pasajes difíciles' }, '⚡ ' + npas) : null,
           s.notas ? h('span.chip', icono('nota2'), 'Notas') : null)),
       miniatura,

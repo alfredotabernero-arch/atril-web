@@ -301,6 +301,22 @@
     const sB = await DB.get('secciones', obras[0].secs[1]);
     sB.tareas.push({ id: u.uid(), texto: 'Respiración antes del c. 40', hecha: true, creada: u.sumarDias(hoy, -8).getTime(), hechaEn: u.sumarDias(hoy, -1).getTime() });
     await DB.put('secciones', sB);
+    // escuchas de ejemplo (Atril 3.0): la confianza de A sube, B y su pasaje van flojos, y dos pasadas completas
+    {
+      const ahora = Date.now(), D = 86400000;
+      const pasajes = (await DB.get('obras', obras[0].id)).pasajes || [];
+      const toma = (secId, desde, hasta, dias, p, extra) => DB.put('tomas', Object.assign({
+        obraId: obras[0].id, seccionId: secId, pasajeId: null, desde, hasta, modo: 'normal', inicio: ahora - dias * D - 3 * 3600000, fin: ahora - dias * D - 3 * 3600000 + 95000,
+        dur: 95, durTotal: 98, tocando: 84, paradas: p < 60 ? [[41.5, 2.6]] : [], dudas: p < 75 ? [[63.2, 1.1]] : [], marcas: p < 50 ? [38.4] : [],
+        seg: Array.from({ length: 98 }, (_, i) => [(i > 40 && i < 44) || i > 95 ? 0 : 18, 8, 9, 3]),
+        metricas: { continuidad: Math.min(100, p + 6), afinacion: Math.min(100, p + 12), pulso: Math.max(0, p - 8) }, puntuacion: p, medida: 'confianza', grabacionId: null, notas: ''
+      }, extra || {}));
+      for (const [d, p] of [[13, 52], [9, 61], [5, 70], [2, 78]]) await toma(obras[0].secs[0], 1, 16, d, p);
+      for (const [d, p] of [[11, 34], [6, 41], [1, 48]]) await toma(obras[0].secs[1], 17, 48, d, p);
+      if (pasajes[0]) await toma(obras[0].secs[1], pasajes[0].desde, pasajes[0].hasta, 3, 39, { pasajeId: pasajes[0].id, dur: 40, durTotal: 42, tocando: 33 });
+      await toma(obras[0].secs[2], 49, 62, 1, 57, { modo: 'lectura', medida: 'fluidez' });
+      for (const [d, p] of [[8, 58], [3, 67]]) await toma(null, null, null, d, p, { modo: 'concierto', dur: 205, durTotal: 212, tocando: 190 });
+    }
     // una clase a la semana
     for (let w = 5; w >= 1; w--) {
       const ini = u.sumarDias(hoy, -7 * w + 2); ini.setHours(18, 0, 0, 0);

@@ -19,7 +19,7 @@
   async function datos(ini) {
     const fin = u.sumarDias(ini, 7);
     const t0 = ini.getTime(), t1 = fin.getTime();
-    const [obras, secciones, sesiones, tempos, plan] = await Promise.all([DB.all('obras'), DB.all('secciones'), DB.all('sesiones'), DB.all('tempos'), modelo.plan()]);
+    const [obras, secciones, sesiones, tempos, plan, tomasTodas] = await Promise.all([DB.all('obras'), DB.all('secciones'), DB.all('sesiones'), DB.all('tempos'), modelo.plan(), DB.all('tomas').catch(() => [])]);
     const semana = sesiones.filter(x => x.inicio >= t0 && x.inicio < t1).sort((a, b) => a.inicio - b.inicio);
     const porTipo = {};
     semana.forEach(x => { const t = modelo.tipoDe(x); porTipo[t] = (porTipo[t] || 0) + (x.minutos || 0); });
@@ -49,14 +49,15 @@
       const leidosSem = modelo.lecturaEntre(o, ini, fin);
       const pasTrab = (o.pasajes || []).filter(p => (p.trabajado >= t0 && p.trabajado < t1) || (p.resuelto >= t0 && p.resuelto < t1));
       const minutos = ses.reduce((a, x) => a + (x.minutos || 0), 0);
-      if (!minutos && !tareas.length && !leidosSem && !pasTrab.length && !Object.keys(tempSem).length) return;
+      const tomas = tomasTodas.filter(t => t.obraId === o.id && t.inicio >= t0 && t.inicio < t1 && t.puntuacion != null);
+      if (!minutos && !tareas.length && !leidosSem && !pasTrab.length && !Object.keys(tempSem).length && !tomas.length) return;
       const porTipoO = {};
       ses.forEach(x => { const t = modelo.tipoDe(x); porTipoO[t] = (porTipoO[t] || 0) + (x.minutos || 0); });
       const trabajadas = secs.filter(s => minSec[s.id] || tempSem[s.id] || tareas.some(x => x.s === s));
       lista.push({
         o, secs, minutos, porTipo: porTipoO, sesiones: ses, minSec, trabajadas, tareas, tempSem, leidosSem,
         lectura: modelo.lecturaObra(secs, o), progreso: modelo.progresoObra(o, secs), fase: modelo.estado(modelo.estadoObra(o, secs)),
-        pasajes: pasTrab, pendientesPas: modelo.pasajesDe(o).length
+        pasajes: pasTrab, pendientesPas: modelo.pasajesDe(o).length, tomas
       });
     });
     lista.sort((a, b) => b.minutos - a.minutos);
@@ -172,6 +173,15 @@
       if (ob.pasajes.length || ob.pendientesPas) {
         const txt = ob.pasajes.map(p => modelo.textoPasaje(p) + (p.resuelto && p.resuelto >= d.ini.getTime() && p.resuelto < d.fin.getTime() ? ' (¡resuelto!)' : ' (trabajado)') + (p.nota ? ': ' + p.nota : '')).join('; ');
         fila('Pasajes difíciles', (txt || 'Ninguno trabajado esta semana') + (ob.pendientesPas ? ` · quedan ${ob.pendientesPas} por resolver` : ''), C.naranja);
+      }
+      if (ob.tomas.length) {
+        const pas = ob.tomas.filter(t => t.modo === 'concierto');
+        const otras = ob.tomas.filter(t => t.modo !== 'concierto');
+        const med = l => Math.round(l.reduce((a, t) => a + t.puntuacion, 0) / l.length);
+        const partes = [];
+        if (otras.length) partes.push(otras.length + (otras.length === 1 ? ' escucha' : ' escuchas') + ' · ' + (otras.every(t => t.medida === 'fluidez') ? 'fluidez' : 'confianza') + ' media ' + med(otras) + ' %');
+        if (pas.length) partes.push(pas.length + (pas.length === 1 ? ' pasada completa' : ' pasadas completas') + ' (' + pas.filter(t => !t.paradas.length).length + ' sin paradas) · ' + med(pas) + ' %');
+        fila('Escuchar', partes.join('  ·  '), C.morado);
       }
       const val = ob.sesiones.filter(x => x.valoracion);
       if (val.length) { sitio(16); doc.texto(M + 14, y, 'Cómo fue', { tam: 8.5, negrita: true, color: C.tenue }); estrellas(M + 120, y - 3.2, Math.round(val.reduce((a, x) => a + x.valoracion, 0) / val.length)); y += 16; }

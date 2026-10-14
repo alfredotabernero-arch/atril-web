@@ -274,6 +274,9 @@
             : h('p.mini.tenue', { style: { margin: 0 } }, 'Ninguno en ' + modelo.rangoTexto(sec) + '. Se marcan en la obra por compases y siguen marcados aunque dividas o unas secciones.')));
       }
 
+      // --------- escuchar (3.0): confianza o fluidez de la sección y su evolución
+      if (obra) main.appendChild(A.escucharUI.tarjetaSeccion(sec, obra, await A.escuchar.deObra(sec.obraId)));
+
       // --------- observaciones
       const estadoGuardado = h('span.mini.tenue');
       const obs = h('textarea.observaciones', { value: sec.notas || '', placeholder: 'Observaciones: indicaciones del director, respiraciones, matices, por dónde atacar el pasaje…' });
