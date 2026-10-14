@@ -19,11 +19,13 @@
   A.vistas.herramientas = {
     titulo: 'Herramientas',
     async render(ctx) {
+      // en el modo sencillo, solo metrónomo y afinador
+      const lista = A.sencillo && A.sencillo.activo ? HERRAMIENTAS.filter(x => x.id === 'metronomo' || x.id === 'afinador') : HERRAMIENTAS;
       const id = ctx.params[0] || (await DB.kvGet('ultimaHerramienta', 'metronomo'));
-      DB.kvSet('ultimaHerramienta', id);
-      const herr = HERRAMIENTAS.find(x => x.id === id) || HERRAMIENTAS[0];
+      const herr = lista.find(x => x.id === id) || lista[0];
+      if (lista === HERRAMIENTAS) DB.kvSet('ultimaHerramienta', herr.id);
       ctx.titulo.textContent = herr.nombre;
-      ctx.main.appendChild(h('div.segmentado', { style: { marginBottom: '14px' } }, HERRAMIENTAS.map(x =>
+      ctx.main.appendChild(h('div.segmentado' + (lista.length < 3 ? '.sen-herr' : ''), { style: { marginBottom: '14px' } }, lista.map(x =>
         h('button' + (x.id === herr.id ? '.on' : ''), { onclick: () => (location.hash = '#/herramientas/' + x.id) }, x.nombre))));
       const cont = h('div');
       ctx.main.appendChild(cont);

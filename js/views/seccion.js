@@ -100,6 +100,14 @@
         barra.firstChild.style.width = Math.round(f * 100) + '%';
       };
       const barra = h('div.barra.lectura-barra', h('i', { style: { width: Math.round(frac * 100) + '%' } }));
+      // registro diario de lo leído en la obra (para el resumen semanal del profesor)
+      let leidosAntes = modelo.compasesLeidos(sec);
+      const apuntarLectura = async () => {
+        const ahora = modelo.compasesLeidos(sec);
+        if (ahora === leidosAntes) return;
+        await modelo.anotarLectura(sec.obraId, ahora - leidosAntes);
+        leidosAntes = ahora;
+      };
       let ctrl;
       if (conRango) {
         const valor = () => u.clamp(sec.leidoHasta || sec.desde - 1, sec.desde - 1, sec.hasta);
@@ -111,7 +119,7 @@
           if (desde !== rango) rango.value = sec.leidoHasta;
           pintarTxt();
           clearTimeout(fijar.t);
-          fijar.t = setTimeout(async () => { sec.trabajada = Date.now(); await DB.put('secciones', sec); alCambiar && alCambiar(); }, 300);
+          fijar.t = setTimeout(async () => { sec.trabajada = Date.now(); await DB.put('secciones', sec); await apuntarLectura(); alCambiar && alCambiar(); }, 300);
           if (sec.leidoHasta >= sec.hasta && !fijar.avisado) { fijar.avisado = true; u.toast('Sección leída entera: pásala a «Montando» cuando quieras'); }
         };
         num.addEventListener('change', () => fijar(Number(num.value), num));
@@ -128,7 +136,7 @@
         const rango = h('input', { type: 'range', min: 0, max: 100, step: 5, value: sec.leidoPct || 0, 'aria-label': 'Porcentaje leído' });
         rango.addEventListener('input', () => {
           sec.leidoPct = Number(rango.value); pintarTxt();
-          clearTimeout(rango.t); rango.t = setTimeout(async () => { sec.trabajada = Date.now(); await DB.put('secciones', sec); alCambiar && alCambiar(); }, 300);
+          clearTimeout(rango.t); rango.t = setTimeout(async () => { sec.trabajada = Date.now(); await DB.put('secciones', sec); await apuntarLectura(); alCambiar && alCambiar(); }, 300);
         });
         ctrl = h('div', rango, h('p.mini.tenue', { style: { margin: '2px 0 0' } }, 'Pon los compases de la sección (desde–hasta) para contar la lectura compás a compás.'));
       }
@@ -205,8 +213,8 @@
 
       acciones.append(
         await A.dialogos.botonManana(sec.obraId, sec.id),
-        h('button.btn-icono', { 'aria-label': 'Editar', title: 'Editar', onclick: async () => { if (await A.dialogos.seccion(sec.obraId, sec)) A.app.refrescar(); } }, icono('editar')),
-        h('button.btn-icono', {
+        h('button.btn-icono.no-sencillo', { 'aria-label': 'Editar', title: 'Editar', onclick: async () => { if (await A.dialogos.seccion(sec.obraId, sec)) A.app.refrescar(); } }, icono('editar')),
+        h('button.btn-icono.no-sencillo', {
           'aria-label': 'Borrar', title: 'Borrar', onclick: async () => {
             if (!await u.confirmar(`¿Borrar la sección «${sec.nombre}» con sus fotos y tareas?`, 'Borrar', 'peligro')) return;
             await DB.borrarSeccion(sec.id); u.toast('Sección borrada'); location.hash = '#/obra/' + sec.obraId;
@@ -215,7 +223,7 @@
 
       // --------- cabecera de color
       const prog = modelo.progresoSeccion(sec);
-      const pctEl = h('div.hero-pct', Math.round(prog * 100), h('small', '%'));
+      const pctEl = h('div.hero-pct.no-sencillo', Math.round(prog * 100), h('small', '%'));
       const barraEl = h('i', { style: { width: Math.round(prog * 100) + '%' } });
       const chipFase = h('span.chip.blanco');
       const refrescarProg = () => {
@@ -231,16 +239,16 @@
           h('div.crece',
             h('a.hero-sub', { href: '#/obra/' + sec.obraId }, obra ? obra.titulo : ''),
             h('div.hero-titulo', sec.nombre),
-            h('div.hero-sub', [modelo.rangoTexto(sec), sec.dificil ? '⚡ Pasaje difícil' : null].filter(Boolean).join(' · '))),
+            h('div.hero-sub', [modelo.rangoTexto(sec), sec.dificil ? '⚡ Sección difícil' : null].filter(Boolean).join(' · '))),
           pctEl),
-        h('div.barra.blanca.gruesa', barraEl),
-        h('div.fila', { style: { marginTop: '10px' } }, chipFase),
+        h('div.barra.blanca.gruesa.no-sencillo', barraEl),
+        h('div.fila.no-sencillo', { style: { marginTop: '10px' } }, chipFase),
         h('div.fila', { style: { marginTop: '14px' } },
           h('a.btn.blanco.grande.crece', { href: '#/atril/' + sec.id }, icono('atril'), 'Estudiar en el atril'),
           h('a.btn.translucido.grande', { href: '#/herramientas/metronomo/' + sec.id, 'aria-label': 'Metrónomo' }, icono('metronomo')))));
 
       // --------- fase de estudio
-      main.appendChild(h('section.tarjeta',
+      main.appendChild(h('section.tarjeta.no-sencillo',
         h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#7C5CFF' } }, icono('estadisticas')), h('h2', 'Fase de estudio')),
         faseUI(sec, refrescarProg)));
 
@@ -253,6 +261,18 @@
       main.appendChild(h('section.tarjeta',
         h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#22C27A' } }, icono('tareas')), h('h2', 'Qué trabajar')),
         tareasUI(sec)));
+
+      // --------- pasajes difíciles que caen en esta sección (están marcados en la obra)
+      if (obra && modelo.tieneRango(sec)) {
+        const pas = modelo.pasajesEnSeccion(obra, sec);
+        main.appendChild(h('section.tarjeta.tarjeta-pasajes',
+          h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#FF8A3D' } }, '⚡'), h('h2.crece', 'Pasajes difíciles'),
+            h('button.btn.pequeno', { onclick: async () => { if (await A.dialogos.pasaje(obra, null, { desde: sec.desde, hasta: Math.min(sec.hasta, sec.desde + 3) })) A.app.refrescar(); } }, icono('mas'), 'Pasaje')),
+          pas.length ? h('ul.lista', pas.map(p => h('li', h('div.item.pasaje',
+            h('div.crece', h('span.pasaje-rango', '⚡ ' + modelo.textoPasaje(p)), p.nota ? h('span.pasaje-nota', p.nota) : null),
+            h('a.btn-icono', { href: '#/atril/' + sec.id + '/p:' + p.id, 'aria-label': 'Estudiar el pasaje', title: 'Estudiar en el atril' }, icono('play'))))))
+            : h('p.mini.tenue', { style: { margin: 0 } }, 'Ninguno en ' + modelo.rangoTexto(sec) + '. Se marcan en la obra por compases y siguen marcados aunque dividas o unas secciones.')));
+      }
 
       // --------- observaciones
       const estadoGuardado = h('span.mini.tenue');
@@ -283,7 +303,7 @@
       };
       const dificil = h('input', { type: 'checkbox', checked: !!sec.dificil });
       dificil.addEventListener('change', async () => { sec.dificil = dificil.checked; await DB.put('secciones', sec); });
-      main.appendChild(h('section.tarjeta',
+      main.appendChild(h('section.tarjeta.no-sencillo',
         h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#FF4F8B' } }, icono('estrella')), h('h2', 'Dominio y tempo')),
         estrellasUI(sec, refrescarProg),
         h('div.fila', { style: { marginTop: '14px' } },
@@ -296,7 +316,7 @@
           h('button.btn.pequeno', { onclick: () => cambiarTempo(5) }, '+5'),
           h('span.crece'),
           h('a.btn.pequeno', { href: '#/herramientas/metronomo/' + sec.id }, icono('metronomo'), 'Metrónomo')),
-        h('label.interruptor', { style: { marginTop: '8px' } }, h('span', 'Pasaje difícil (más prioridad)'), dificil)));
+        h('label.interruptor', { style: { marginTop: '8px' } }, h('span', 'Sección difícil entera (más prioridad)'), dificil)));
       pintarTempo();
 
       // --------- grabaciones e historial de la sección
@@ -312,14 +332,14 @@
         return x.seccionId === sec.id ? x : null;
       }).filter(Boolean).sort((a, b) => b.inicio - a.inicio);
       if (mias.length) {
-        main.appendChild(h('div.seccion-titulo', h('h2', 'Historial'), h('span.mini.tenue', u.minutos(mias.reduce((a, x) => a + (x.minutosAqui != null ? x.minutosAqui : x.minutos), 0)) + ' en total')));
-        main.appendChild(A.obrasUI.historial(mias, [sec]));
+        main.appendChild(h('div.seccion-titulo.no-sencillo', h('h2', 'Historial'), h('span.mini.tenue', u.minutos(mias.reduce((a, x) => a + (x.minutosAqui != null ? x.minutosAqui : x.minutos), 0)) + ' en total')));
+        main.appendChild(h('div.no-sencillo', A.obrasUI.historial(mias, [sec], obra)));
       }
 
       // --------- organizar: dividir o unir
       const sigH = hermanas[idx + 1];
-      main.appendChild(h('div.seccion-titulo', h('h2', 'Organizar la sección')));
-      main.appendChild(h('section.tarjeta',
+      main.appendChild(h('div.seccion-titulo.no-sencillo', h('h2', 'Organizar la sección')));
+      main.appendChild(h('section.tarjeta.no-sencillo',
         h('p.mini.tenue', { style: { marginTop: 0 } }, modelo.faseDe(sec) === 'lectura' && sec.nombre === 'Obra completa'
           ? 'Cuando hayas leído la obra y sepas dónde están las dificultades, divídela en secciones con sentido musical: las letras del director, las frases y, aparte, los pasajes difíciles.'
           : 'Si dentro de esta sección hay un trozo mucho más difícil, divídela; si dos secciones se trabajan igual, únelas.'),

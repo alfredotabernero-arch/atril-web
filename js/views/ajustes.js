@@ -8,6 +8,12 @@
   A.vistas.ajustes = {
     titulo: 'Ajustes',
     async render({ main }) {
+      // en el modo sencillo, Ajustes solo deja salir de él
+      if (A.sencillo && A.sencillo.activo) {
+        main.appendChild(A.sencillo.tarjetaAjustes());
+        main.appendChild(h('p.mini.tenue', { style: { textAlign: 'center' } }, 'Atril ' + A.VERSION));
+        return;
+      }
       const plan = await modelo.plan();
 
       // ---------- plan semanal
@@ -43,6 +49,9 @@
         A.herr.interruptor('Mostrar ayudas', A.ayuda.activas(), v => A.ayuda.poner(v)),
         h('p.mini.tenue', { style: { margin: '2px 0 8px' } }, A.nativo.es ? 'Mantén pulsado un botón y te explica qué hace (sin ejecutarlo).' : 'Deja el ratón quieto sobre un botón y te explica qué hace. En el móvil, mantenlo pulsado.'),
         h('p.mini.tenue', { style: { margin: '10px 0 0' } }, 'El ' + A.pitch.nombreLa() + ' de referencia (430–445 Hz) se cambia en Herramientas › Afinador.')));
+
+      // ---------- modo sencillo
+      main.appendChild(A.sencillo.tarjetaAjustes());
 
       // ---------- nombres de las notas
       const notacion = A.pitch.notacion();
@@ -279,6 +288,24 @@
         }
         obras[i].secs.push(s.id);
       }
+    }
+    // pasajes difíciles marcados por compases (sin necesidad de secciones)
+    await modelo.guardarPasaje(obras[0].id, { desde: 31, hasta: 34, nota: 'Cambio de posición' });
+    await modelo.guardarPasaje(obras[0].id, { desde: 57, hasta: 60, nota: 'Semicorcheas con púa alternada' });
+    const pr = await modelo.guardarPasaje(obras[1].id, { desde: 29, hasta: 31, nota: 'Armónicos' });
+    await modelo.marcarPasajes(obras[1].id, [pr.id], { trabajado: u.sumarDias(hoy, -9).getTime(), resuelto: u.sumarDias(hoy, -5).getTime() });
+    // lectura del estudio en los últimos días y una tarea ya hecha esta semana
+    const o3 = await DB.get('obras', obras[2].id);
+    o3.lecturaLog = { [dia(-4)]: { a: 0, b: 4 }, [dia(-2)]: { a: 4, b: 7 }, [dia(-1)]: { a: 7, b: 10 } };
+    await DB.put('obras', o3);
+    const sB = await DB.get('secciones', obras[0].secs[1]);
+    sB.tareas.push({ id: u.uid(), texto: 'Respiración antes del c. 40', hecha: true, creada: u.sumarDias(hoy, -8).getTime(), hechaEn: u.sumarDias(hoy, -1).getTime() });
+    await DB.put('secciones', sB);
+    // una clase a la semana
+    for (let w = 5; w >= 1; w--) {
+      const ini = u.sumarDias(hoy, -7 * w + 2); ini.setHours(18, 0, 0, 0);
+      if (ini > hoy) continue;
+      await DB.put('sesiones', { obraId: obras[0].id, seccionId: null, inicio: ini.getTime(), fin: ini.getTime() + 45 * 60000, minutos: 45, notas: 'Clase: repasar el Intermedio a 104', valoracion: 4, tipo: 'clase', manual: true });
     }
     // sesiones de las últimas 5 semanas
     let semilla = 7;

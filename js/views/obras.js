@@ -22,14 +22,14 @@
     titulo: 'Mis obras',
     async render({ main, acciones, params }) {
       const filtro = params[0] || 'activas';
-      acciones.appendChild(h('button.btn.primario', {
+      acciones.appendChild(h('button.btn.primario.no-sencillo', {
         onclick: async () => { const o = await A.dialogos.obra(); if (o) location.hash = '#/obra/' + o.id; }
       }, icono('mas'), 'Nueva'));
 
       const cart = await modelo.cartera();
       const nAct = cart.filter(c => c.obra.estado !== 'archivada').length;
       const nArch = cart.length - nAct;
-      main.appendChild(h('div.segmentado', { style: { marginBottom: '16px' } },
+      main.appendChild(h('div.segmentado.no-sencillo', { style: { marginBottom: '16px' } },
         h('button' + (filtro === 'activas' ? '.on' : ''), { onclick: () => (location.hash = '#/obras/activas') }, `En cartera · ${nAct}`),
         h('button' + (filtro === 'archivadas' ? '.on' : ''), { onclick: () => (location.hash = '#/obras/archivadas') }, `Archivadas · ${nArch}`)));
 
@@ -51,11 +51,11 @@
             h('div.crece',
               h('div.obra-card-titulo', o.titulo),
               h('div.obra-card-sub', [o.compositor, o.instrumento].filter(Boolean).join(' · ') || ' ')),
-            h('div.obra-card-pct', Math.round(c.progreso * 100), h('small', '%'))),
-          h('div.barra.blanca', h('i', { style: { width: ancho(c.progreso) } })),
+            h('div.obra-card-pct.no-sencillo', Math.round(c.progreso * 100), h('small', '%'))),
+          h('div.barra.blanca.no-sencillo', h('i', { style: { width: ancho(c.progreso) } })),
           h('div.fila.envuelve', { style: { marginTop: '12px', gap: '6px' } },
-            h('span.chip.blanco', modelo.estado(c.estado).nombre),
-            c.ritmo && c.ritmo.nivel !== 'bien' ? chipRitmo(c.ritmo, true) : null,
+            h('span.chip.blanco.no-sencillo', modelo.estado(c.estado).nombre),
+            c.ritmo && c.ritmo.nivel !== 'bien' ? h('span.no-sencillo', chipRitmo(c.ritmo, true)) : null,
             o.fechaObjetivo ? h('span.chip.blanco', '📅 ' + u.fechaCorta(o.fechaObjetivo)) : null,
             c.secciones.length ? h('span.chip.blanco', c.secciones.length + (c.secciones.length === 1 ? ' sección' : ' secciones')) : null,
             pend ? h('span.chip.blanco', '✓ ' + pend + ' pendientes') : null,
@@ -79,8 +79,8 @@
 
       acciones.append(
         await A.dialogos.botonManana(obra.id, null),
-        h('button.btn-icono', { 'aria-label': 'Editar', title: 'Editar', onclick: async () => { if (await A.dialogos.obra(obra)) A.app.refrescar(); } }, icono('editar')),
-        h('button.btn-icono', {
+        h('button.btn-icono.no-sencillo', { 'aria-label': 'Editar', title: 'Editar', onclick: async () => { if (await A.dialogos.obra(obra)) A.app.refrescar(); } }, icono('editar')),
+        h('button.btn-icono.no-sencillo', {
           'aria-label': 'Borrar', title: 'Borrar', onclick: async () => {
             if (!await u.confirmar(`¿Borrar «${obra.titulo}» con sus secciones, fotos y grabaciones? Las sesiones de estudio se conservan en tus estadísticas.`, 'Borrar', 'peligro')) return;
             await DB.borrarObra(id); u.toast('Obra borrada'); location.hash = '#/obras';
@@ -115,15 +115,15 @@
       main.appendChild(h('section.hero', { style: { '--c': obra.color } },
         h('div.fila', { style: { alignItems: 'center' } },
           h('div.hero-sub.crece', [obra.compositor, obra.instrumento].filter(Boolean).join(' · ') || 'Sin compositor'),
-          selEstado),
-        h('div.hero-pct', { style: { marginTop: '6px' } }, Math.round(progreso * 100), h('small', '% completado')),
-        h('div.barra.blanca.gruesa', h('i', { style: { width: ancho(progreso) } })),
-        hayLectura ? h('p.hero-ritmo', h('span.chip.blanco', '📖 Lectura'), ` ${lectura.leidos} de ${lectura.total} compases leídos (${Math.round(lectura.leidos / lectura.total * 100)} %)`) : null,
-        !secciones.length && estadoEf === 'lectura' ? h('p.hero-ritmo', 'Añade secciones con sus compases para que la lectura cuente en el progreso.') : null,
-        ritmo ? h('p.hero-ritmo', chipRitmo(ritmo, true), ' ',
+          h('span.no-sencillo', selEstado)),
+        h('div.hero-pct.no-sencillo', { style: { marginTop: '6px' } }, Math.round(progreso * 100), h('small', '% completado')),
+        h('div.barra.blanca.gruesa.no-sencillo', h('i', { style: { width: ancho(progreso) } })),
+        hayLectura ? h('p.hero-ritmo.no-sencillo', h('span.chip.blanco', '📖 Lectura'), ` ${lectura.leidos} de ${lectura.total} compases leídos (${Math.round(lectura.leidos / lectura.total * 100)} %)`) : null,
+        !secciones.length && estadoEf === 'lectura' ? h('p.hero-ritmo.no-sencillo', 'Añade secciones con sus compases para que la lectura cuente en el progreso.') : null,
+        ritmo ? h('p.hero-ritmo.no-sencillo', chipRitmo(ritmo, true), ' ',
           ritmo.quedan >= 0 ? `Quedan ${ritmo.quedan} días (${u.fechaCorta(obra.fechaObjetivo)}). Lo esperable ahora sería un ${pct(ritmo.esperado)}.`
             : `La fecha objetivo (${u.fechaCorta(obra.fechaObjetivo)}) ya ha pasado.`) : null,
-        h('div.hero-datos',
+        h('div.hero-datos.no-sencillo',
           h('div', h('b', u.minutos(minTot)), h('span', 'en total')),
           h('div', h('b', u.minutos(minSem)), h('span', obra.minSemana ? 'de ' + u.minutos(obra.minSemana) + ' esta sem.' : 'esta semana')),
           h('div', h('b', sesiones.length), h('span', 'sesiones'))),
@@ -134,15 +134,19 @@
         obra.notas ? h('p.hero-notas', obra.notas) : null));
 
       // --------- mapa de la obra
-      if (secciones.some(s => s.desde && s.hasta)) main.appendChild(mapaObra(secciones, obra));
+      const pasajes = modelo.pasajesDe(obra);
+      if (secciones.some(s => s.desde && s.hasta) || (pasajes.length && obra.compases)) main.appendChild(h('div.no-sencillo', mapaObra(secciones, obra)));
+
+      // --------- pasajes difíciles (por compases, sin necesidad de secciones)
+      main.appendChild(tarjetaPasajes(obra, secciones));
 
       // --------- secciones
       main.appendChild(h('div.seccion-titulo', h('h2', 'Secciones'),
-        h('div.fila', { style: { gap: '6px' } },
+        h('div.fila.no-sencillo', { style: { gap: '6px' } },
           h('button.btn.pequeno', { 'data-ayuda': 'varias', onclick: async () => { if (await A.dialogos.variasSecciones(id)) A.app.refrescar(); } }, 'Varias'),
           h('button.btn.primario.pequeno', { 'data-ayuda': 'anadirSeccion', onclick: async () => { const s = await A.dialogos.seccion(id); if (s) A.app.refrescar(); } }, icono('mas'), 'Añadir'))));
       if (!secciones.length) {
-        main.appendChild(h('div.tarjeta.vacio.compacto',
+        main.appendChild(h('div.tarjeta.vacio.compacto.no-sencillo',
           h('p', { style: { margin: '0 0 6px' } }, h('b', 'Lo recomendable: léela entera primero.'), ' Atril crea una sola sección con toda la obra; cada día apuntas «Hasta el c.» donde llegaste y, cuando la conozcas, la divides en secciones con sentido musical.'),
           h('button.btn.primario', { style: { marginBottom: '8px' }, onclick: async () => { if (await A.dialogos.obraCompleta(obra)) A.app.refrescar(); } }, icono('libro'), 'Empezar a leer la obra entera'),
           h('p.mini.tenue', { style: { margin: '6px 0 8px' } }, 'Si ya la conoces, puedes crear directamente sus secciones (por letras de ensayo o frases).'),
@@ -151,7 +155,7 @@
         const lista = h('div.lista-secciones');
         secciones.forEach((s, i) => lista.appendChild(tarjetaSeccion(s, i, secciones, obra, fotosSec[s.id] || [])));
         main.appendChild(lista);
-        if (sinSeccion) main.appendChild(h('p.mini.tenue', { style: { margin: '-4px 6px 12px' } },
+        if (sinSeccion) main.appendChild(h('p.mini.tenue.no-sencillo', { style: { margin: '-4px 6px 12px' } },
           `Quedan ${sinSeccion} compases de la obra sin sección: cuentan como «Sin empezar» en el progreso.`));
       }
 
@@ -163,19 +167,63 @@
       }
 
       // --------- historial
-      main.appendChild(h('div.seccion-titulo', h('h2', 'Historial'),
+      main.appendChild(h('div.seccion-titulo.no-sencillo', h('h2', 'Historial'),
         h('button.btn.pequeno', { onclick: async () => { await A.dialogos.sesionManual(id); A.app.refrescar(); } }, icono('mas'), 'Sesión')));
-      main.appendChild(historial(sesiones, secciones));
+      main.appendChild(h('div.no-sencillo', historial(sesiones, secciones, obra)));
 
       const off = modelo.sesion.on(() => A.app.refrescar());
       return () => { off(); document.documentElement.style.removeProperty('--obra'); };
     }
   };
 
+  /** Pasajes difíciles de la obra: marcados por compases; los resueltos quedan en el historial */
+  function tarjetaPasajes(obra, secciones) {
+    const activos = modelo.pasajesDe(obra);
+    const resueltos = modelo.pasajesDe(obra, true).filter(p => p.resuelto).sort((a, b) => b.resuelto - a.resuelto);
+    const enCurso = modelo.sesion.estado && modelo.sesion.estado.pasajeId;
+    const fila = p => {
+      const sec = modelo.seccionDePasaje(secciones, p);
+      const meta = [sec ? 'en ' + (sec.letra ? sec.letra + ' · ' : '') + sec.nombre : null,
+        p.resuelto ? 'resuelto el ' + u.fechaCorta(p.resuelto) : p.trabajado ? 'trabajado ' + cuando(p.trabajado) : 'sin trabajar aún'].filter(Boolean).join(' · ');
+      return h('li', h('div.item.pasaje' + (p.resuelto ? '.resuelto' : '') + (p.id === enCurso ? '.activo' : ''),
+        h('div.crece', h('div', h('span.pasaje-rango', '⚡ ' + modelo.textoPasaje(p)), p.nota ? h('span.pasaje-nota', p.nota) : null), h('div.mini.tenue', { style: { marginTop: '4px' } }, meta)),
+        p.resuelto ? h('button.btn.pequeno', { onclick: async () => { await modelo.marcarPasajes(obra.id, [p.id], { resuelto: null }); A.app.refrescar(); } }, 'Reabrir')
+          : h('button.btn-icono', { 'aria-label': 'Estudiar el pasaje', title: 'Estudiar', onclick: () => A.dialogos.estudiarPasaje(obra, p, secciones) }, icono('play')),
+        h('button.btn-icono', { 'aria-label': 'Más opciones del pasaje', title: 'Editar', onclick: () => opciones(p) }, icono('editar'))));
+    };
+    async function opciones(p) {
+      const r = await u.modal(modelo.textoPasaje(p) + (p.nota ? ' · ' + p.nota : ''), h('p.tenue', { style: { margin: 0 } }, 'Pasaje difícil de «' + obra.titulo + '».'), [
+        { texto: 'Borrar', clase: 'peligro', accion: async () => (await u.confirmar('¿Borrar este pasaje? Si ya lo dominas, mejor márcalo como resuelto: así queda en el historial.', 'Borrar', 'peligro')) ? 'borrar' : false },
+        { texto: 'Editar', accion: () => 'editar' },
+        p.resuelto ? { texto: 'Reabrir', clase: 'primario', accion: () => 'reabrir' } : { texto: 'Resuelto ✓', clase: 'primario', accion: () => 'resuelto' }
+      ]);
+      if (r === 'borrar') await modelo.borrarPasaje(obra.id, p.id);
+      else if (r === 'editar') { if (!(await A.dialogos.pasaje(obra, p))) return; }
+      else if (r === 'resuelto') { await modelo.marcarPasajes(obra.id, [p.id], { resuelto: Date.now() }); u.toast('Pasaje resuelto 🎉'); }
+      else if (r === 'reabrir') await modelo.marcarPasajes(obra.id, [p.id], { resuelto: null });
+      else return;
+      A.app.refrescar();
+    }
+    let verResueltos = false;
+    const listaRes = h('ul.lista');
+    const btnRes = resueltos.length ? h('button.enlace.mini', { onclick: () => { verResueltos = !verResueltos; listaRes.replaceChildren(...(verResueltos ? resueltos.map(fila) : [])); btnRes.textContent = verResueltos ? 'Ocultar resueltos' : 'Ver resueltos (' + resueltos.length + ')'; } }, 'Ver resueltos (' + resueltos.length + ')') : null;
+    return h('section.tarjeta.tarjeta-pasajes',
+      h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#FF8A3D' } }, '⚡'), h('h2.crece', 'Pasajes difíciles'),
+        h('button.btn.pequeno', { 'data-ayuda': 'pasaje', onclick: async () => { if (await A.dialogos.pasaje(obra)) A.app.refrescar(); } }, icono('mas'), 'Pasaje')),
+      activos.length ? h('ul.lista', activos.map(fila))
+        : h('p.mini.tenue', { style: { margin: '0 0 4px' } }, resueltos.length ? 'Ningún pasaje pendiente. ¡Bien!' : 'Marca los compases que se te resisten (p. ej. c. 40–44). No hace falta tener secciones: Atril te los propondrá en «Hoy te toca».'),
+      btnRes, listaRes);
+  }
+  function cuando(t) {
+    const d = u.diasEntre(t, new Date());
+    return d === 0 ? 'hoy' : d === 1 ? 'ayer' : 'hace ' + d + ' días';
+  }
+
   /** Barra con todos los compases de la obra, coloreada por la fase de cada sección */
   function mapaObra(secciones, obra) {
     const conRango = secciones.filter(s => s.desde && s.hasta).sort((a, b) => a.desde - b.desde);
-    const total = Math.max(Number(obra && obra.compases) || 0, ...conRango.map(s => s.hasta));
+    const pasajes = modelo.pasajesDe(obra);
+    const total = Math.max(Number(obra && obra.compases) || 0, ...conRango.map(s => s.hasta), ...pasajes.map(p => p.hasta));
     const barra = h('div.mapa-obra');
     const reglas = h('div.mapa-reglas');
     let cursor = 1;
@@ -207,10 +255,16 @@
       marcas.appendChild(h('span' + (pos > 80 ? '.dcha' : pos < 20 ? '.izda' : ''), { style: { left: pos + '%', '--c': modelo.estado('lectura').color }, title: 'Leído hasta el compás ' + s.leidoHasta },
         h('i'), 'leído hasta c. ' + s.leidoHasta));
     });
+    // pasajes difíciles: una marca bajo la barra en sus compases
+    const capaPas = pasajes.length ? h('div.mapa-pasajes', pasajes.map(p => h('span', {
+      style: { left: ((p.desde - 1) / total * 100) + '%', width: Math.max(1.2, (p.hasta - p.desde + 1) / total * 100) + '%' },
+      title: 'Pasaje difícil ' + modelo.textoPasaje(p) + (p.nota ? ': ' + p.nota : '')
+    }))) : null;
     return h('section.tarjeta',
       h('div.fila', h('h2.crece', 'Mapa de la obra'), h('span.mini.tenue', total + ' compases')),
-      barra, marcas.childNodes.length ? marcas : null, reglas,
-      h('div.leyenda', modelo.FASES.map(f => h('span', h('i', { style: { background: f.color } }), f.nombre))));
+      barra, capaPas, marcas.childNodes.length ? marcas : null, reglas,
+      h('div.leyenda', modelo.FASES.map(f => h('span', h('i', { style: { background: f.color } }), f.nombre)),
+        pasajes.length ? h('span', h('i.pas'), 'Pasaje difícil') : null));
   }
 
   function tarjetaSeccion(s, i, todas, obra, fotos) {
@@ -218,6 +272,7 @@
     const pend = modelo.pendientes(s).length;
     const dom = s.dominio || 0;
     const fase = modelo.estado(modelo.faseDe(s));
+    const npas = modelo.pasajesEnSeccion(obra, s).length;
     const tempo = s.tempoObjetivo ? `♩ ${s.tempoActual || '—'}/${s.tempoObjetivo}` : (s.tempoActual ? `♩ ${s.tempoActual}` : '');
     const mover = async (e, d) => {
       e.preventDefault(); e.stopPropagation();
@@ -236,20 +291,21 @@
       h('div.crece',
         h('div.sec-nombre', s.dificil ? h('span', { title: 'Pasaje difícil' }, '⚡ ') : null, s.nombre),
         h('div.sec-meta', [modelo.rangoTexto(s), tempo].filter(Boolean).join(' · ')),
-        h('div.barra', { style: { marginTop: '8px', height: '6px' } }, h('i', { style: { width: ancho(prog), background: fase.color } })),
+        h('div.barra.no-sencillo', { style: { marginTop: '8px', height: '6px' } }, h('i', { style: { width: ancho(prog), background: fase.color } })),
         h('div.fila.envuelve', { style: { gap: '5px', marginTop: '8px' } },
-          h('span.chip', { style: { background: `color-mix(in srgb, ${fase.color} 16%, transparent)`, color: fase.color } },
+          h('span.chip.no-sencillo', { style: { background: `color-mix(in srgb, ${fase.color} 16%, transparent)`, color: fase.color } },
             fase.id === 'lectura' ? (modelo.fraccionLeida(s) >= 1 ? 'Leída entera · pásala a Montando' : `Leyendo · ${Math.round(modelo.fraccionLeida(s) * 100)} %`) : fase.id === 'pendiente' || fase.id === 'lista' ? fase.nombre : `${fase.nombre} · ${pct(prog)}`),
-          fase.id !== 'pendiente' && fase.id !== 'lectura' ? h('span.estrellas', '★'.repeat(dom), h('span', '★'.repeat(5 - dom))) : null,
+          fase.id !== 'pendiente' && fase.id !== 'lectura' ? h('span.estrellas.no-sencillo', '★'.repeat(dom), h('span', '★'.repeat(5 - dom))) : null,
           pend ? h('span.chip.acento', '✓ ' + pend) : null,
+          npas ? h('span.chip.aviso', { title: npas === 1 ? '1 pasaje difícil' : npas + ' pasajes difíciles' }, '⚡ ' + npas) : null,
           s.notas ? h('span.chip', icono('nota2'), 'Notas') : null)),
       miniatura,
-      h('div.sec-orden',
+      h('div.sec-orden.no-sencillo',
         h('button.btn-icono.mini-btn', { 'aria-label': 'Subir', onclick: e => mover(e, -1), disabled: i === 0 }, '↑'),
         h('button.btn-icono.mini-btn', { 'aria-label': 'Bajar', onclick: e => mover(e, 1), disabled: i === todas.length - 1 }, '↓')));
   }
 
-  function historial(sesiones, secciones) {
+  function historial(sesiones, secciones, obra) {
     if (!sesiones.length) return h('p.tenue.mini', { style: { padding: '0 4px' } }, 'Todavía no hay sesiones de estudio.');
     const nombreSec = Object.fromEntries(secciones.map(s => [s.id, s.nombre]));
     return h('section.tarjeta', h('ul.lista', sesiones.slice(0, 30).map(s => h('li', h('div.item',
@@ -259,7 +315,9 @@
           s.reparto && s.minutosAqui == null ? h('span.tenue', ' · ' + s.reparto.map(r => (nombreSec[r.seccionId] || 'sección') + ' ' + r.minutos + ' min').join(', '))
             : s.seccionId && nombreSec[s.seccionId] ? h('span.tenue', ' · ' + nombreSec[s.seccionId]) : null,
           s.reparto && s.minutosAqui != null ? h('span.tenue', ` · de una sesión de ${u.minutos(s.minutos)}`) : null,
-          s.bpm ? h('span.tenue', ` · ♩ ${s.bpm}`) : null, s.valoracion ? h('span.estrellas', ' ' + '★'.repeat(s.valoracion)) : null),
+          s.bpm ? h('span.tenue', ` · ♩ ${s.bpm}`) : null, s.valoracion ? h('span.estrellas', ' ' + '★'.repeat(s.valoracion)) : null,
+          modelo.tipoDe(s) !== 'estudio' ? h('span.chip.tipo-' + s.tipo, { style: { marginLeft: '6px' } }, modelo.tipo(s.tipo).icono + ' ' + modelo.tipo(s.tipo).nombre) : null,
+          (s.pasajes || []).length && obra ? h('span.tenue', ' · ⚡ ' + s.pasajes.map(id => ((obra.pasajes || []).find(p => p.id === id))).filter(Boolean).map(modelo.textoPasaje).join(', ')) : null),
         s.notas ? h('div.mini.tenue', { style: { whiteSpace: 'pre-wrap' } }, s.notas) : h('div.mini.tenue', u.hora(s.inicio))),
       h('button.btn-icono', {
         'aria-label': 'Borrar sesión', onclick: async () => {

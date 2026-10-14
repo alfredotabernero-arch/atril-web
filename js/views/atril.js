@@ -34,6 +34,11 @@
       if (!e) { await modelo.sesion.iniciar(sec.obraId, sec.id); u.toast('Cronómetro de estudio en marcha ⏱'); }
       else if (e.seccionId !== sec.id) await modelo.sesion.cambiar(sec.obraId, sec.id);
       u.pantallaEncendida(true, 'atril');
+      // pasaje difícil: «#/atril/<sección>/p:<id>» lo deja elegido; los de la sección se pueden elegir aquí
+      const pasajesSec = modelo.pasajesEnSeccion(obra, sec);
+      const pedido = (params[1] || '').startsWith('p:') ? params[1].slice(2) : null;
+      if (pedido && pasajesSec.some(p => p.id === pedido)) await modelo.sesion.pasaje(pedido);
+      else if (modelo.sesion.estado && modelo.sesion.estado.pasajeId && !pasajesSec.some(p => p.id === modelo.sesion.estado.pasajeId)) await modelo.sesion.pasaje(null);
 
       const reloj = h('span.atril-reloj.num');
       const btnPausa = h('button.btn-icono', { 'aria-label': 'Pausar', onclick: () => modelo.sesion.estado && (modelo.sesion.estado.pausadaEn ? modelo.sesion.reanudar() : modelo.sesion.pausar()) });
@@ -55,6 +60,29 @@
         h('div.atril-crono', reloj, btnPausa,
           h('button.btn.primario.pequeno', { onclick: () => A.dialogos.terminar() }, 'Terminar'))));
 
+      // ---------- pasajes difíciles de esta sección
+      if (pasajesSec.length) {
+        const caja = h('div.atril-pasajes');
+        const pintarPasajes = () => {
+          const act = modelo.sesion.estado && modelo.sesion.estado.pasajeId;
+          caja.replaceChildren(h('span.atril-pasajes-et', '⚡'), ...pasajesSec.map(p => h('button.chip' + (p.id === act ? '.on' : ''), {
+            title: p.nota || 'Pasaje difícil', 'aria-pressed': String(p.id === act),
+            onclick: async () => { await modelo.sesion.pasaje(p.id === act ? null : p.id); pintarPasajes(); }
+          }, modelo.textoPasaje(p) + (p.id === act && p.nota ? ' · ' + p.nota : ''))));
+          const elegido = pasajesSec.find(p => p.id === act);
+          if (elegido) caja.appendChild(h('button.enlace.mini', { onclick: async () => {
+            if (!(await u.confirmar('¿Das por resuelto el pasaje ' + modelo.textoPasaje(elegido) + '? Queda en el historial de la obra.', 'Resuelto'))) return;
+            await modelo.marcarPasajes(sec.obraId, [elegido.id], { resuelto: Date.now(), trabajado: Date.now() });
+            await modelo.sesion.pasaje(null);
+            pasajesSec.splice(pasajesSec.indexOf(elegido), 1);
+            u.toast('Pasaje resuelto 🎉');
+            if (pasajesSec.length) pintarPasajes(); else caja.remove();
+          } }, 'Resuelto'));
+        };
+        pintarPasajes();
+        main.appendChild(caja);
+      }
+
       // ---------- partitura
       const partitura = h('div.atril-partitura');
       const tiras = h('div.atril-miniaturas');
@@ -65,7 +93,7 @@
         if (!fotos.length) {
           partitura.appendChild(h('div.atril-sin-foto',
             h('div.vacio-icono', icono('camara')),
-            h('p', 'Haz una foto del pasaje para tenerlo aquí delante mientras estudias.'),
+            h('p', 'Haz una foto de esta parte de la partitura para anotar digitaciones, arcos y puntos clave. Tocas con tu partitura en el atril.'),
             h('button.btn.primario', { onclick: async () => { if (await A.fotos.anadir(sec)) pintarPartitura(); } }, icono('camara'), 'Añadir foto')));
           return;
         }

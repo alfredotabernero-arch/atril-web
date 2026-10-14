@@ -17,6 +17,8 @@
     'Empezar a leer la obra entera': 'Crea una sola sección con toda la obra, en «Leyendo». Cada día apuntas hasta qué compás llegaste; cuando la conozcas, la divides en secciones.',
     varias: 'Crea varias secciones de golpe escribiendo sus compases (1-16, 17-40…). Úsalo si ya conoces la obra. Si ya tienes «Obra completa», usa «Dividir en dos» dentro de ella.',
     anadirSeccion: 'Crea una sección a mano: nombre, letra de ensayo y compases.',
+    pasaje: 'Marca unos compases que se te resisten (p. ej. c. 40–44), con una nota si quieres. No hace falta tener secciones; Atril te los propondrá en «Hoy te toca».',
+    modoSencillo: 'Deja Atril con lo esencial y botones grandes, para niños y niñas. Se puede proteger con un PIN de 4 cifras.',
     'Dividir en dos': 'Parte la sección por el compás que elijas. Las dos partes conservan la fase, las estrellas y el tempo; las fotos, tareas e historial se quedan en la primera.',
     'Unir con': 'Junta esta sección con la siguiente en una sola, con sus fotos, tareas, notas e historial.',
     'Sección leída: pasar a «Montando»': 'Da la lectura por terminada y pasa la sección a «Montando». Si después la divides, todos los trozos quedan en «Montando».',

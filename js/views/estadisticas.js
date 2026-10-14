@@ -68,7 +68,15 @@
         main.appendChild(h('div.tarjeta.vacio', h('h3', 'Aún no hay datos'), h('p', 'Cuando registres sesiones de estudio verás aquí tu evolución: tiempo previsto frente a real, reparto por obras y progreso del tempo.')));
         return;
       }
+      // resumen semanal para el profesor (PDF)
+      main.appendChild(h('section.tarjeta.resumen-prof',
+        h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#22C27A' } }, A.icono('compartir')), h('h2.crece', 'Resumen para el profesor')),
+        h('p.mini.tenue', { style: { margin: '0 0 10px' } }, 'Un PDF de una semana: minutos por obra, secciones, tareas hechas, estrellas, tempos, compases leídos y pasajes difíciles. Se envía con el menú Compartir.'),
+        h('button.btn.primario', { onclick: () => A.resumen.dialogo() }, A.icono('compartir'), 'Preparar el resumen')));
+
       const porDia = modelo.minutosPorDia(sesiones);
+      // clases, ensayos y conciertos cuentan para el plan y la racha, pero se ven aparte del estudio personal
+      const porDiaEstudio = modelo.minutosPorDia(sesiones.filter(x => modelo.tipoDe(x) === 'estudio'));
       const hoy = new Date();
       const lunesActual = u.inicioSemana(hoy);
       const desde = u.sumarDias(lunesActual, -7 * (per.sem - 1));
@@ -78,16 +86,18 @@
       const semanas = [];
       for (let w = 0; w < per.sem; w++) {
         const ini = u.sumarDias(desde, w * 7);
-        let prev = 0, real = 0;
+        let prev = 0, real = 0, otros = 0;
         for (let d = 0; d < 7; d++) {
           const f = u.sumarDias(ini, d);
           if (f > hoy) continue; // no contar días futuros de la semana en curso
           prev += modelo.previstoDia(plan, f);
-          real += porDia[u.claveDia(f)] || 0;
+          real += porDiaEstudio[u.claveDia(f)] || 0;
+          otros += (porDia[u.claveDia(f)] || 0) - (porDiaEstudio[u.claveDia(f)] || 0);
         }
-        semanas.push({ ini, prev, real });
+        semanas.push({ ini, prev, real, otros });
       }
-      const totReal = semanas.reduce((a, x) => a + x.real, 0);
+      const totReal = semanas.reduce((a, x) => a + x.real + x.otros, 0);
+      const totEst = semanas.reduce((a, x) => a + x.real, 0);
       const totPrev = semanas.reduce((a, x) => a + x.prev, 0);
       const diasConEstudio = Object.keys(porDia).filter(k => k >= u.claveDia(desde) && porDia[k] > 0).length;
       const diasPeriodo = u.diasEntre(desde, hoy) + 1;
@@ -95,13 +105,27 @@
       main.appendChild(h('section.tarjeta',
         h('h2', 'Previsto frente a real'),
         h('div.metricas',
-          h('div.metrica', h('b', u.minutos(totReal)), h('span', 'estudiado')),
+          h('div.metrica', h('b', u.minutos(totReal)), h('span', totEst < totReal ? 'en total, ' + u.minutos(totEst) + ' de estudio' : 'estudiado')),
           h('div.metrica', h('b', totPrev ? Math.round(totReal / totPrev * 100) + '%' : '—'), h('span', 'del plan (' + u.minutos(totPrev) + ')')),
-          h('div.metrica', h('b', diasConEstudio + '/' + diasPeriodo), h('span', 'días con estudio'))),
+          h('div.metrica', h('b', diasConEstudio + '/' + diasPeriodo), h('span', 'días con música'))),
         h('div.grafico', { style: { marginTop: '12px' } }, graficoSemanas(semanas)),
         h('div.leyenda',
-          h('span', h('i', { style: { background: 'var(--acento)' } }), 'Real'),
+          h('span', h('i', { style: { background: 'var(--acento)' } }), 'Estudio'),
+          semanas.some(x => x.otros > 0) ? h('span', h('i', { style: { background: 'var(--tipo-otros)' } }), 'Clases, ensayos y conciertos') : null,
           h('span', h('i', { style: { background: 'var(--tinta-3)', height: '3px', verticalAlign: '3px' } }), 'Previsto'))));
+
+      // ---------- por tipo de sesión
+      const porTipo = {};
+      enPeriodo.forEach(x => { const t = modelo.tipoDe(x); porTipo[t] = porTipo[t] || { min: 0, n: 0 }; porTipo[t].min += x.minutos || 0; porTipo[t].n++; });
+      if (Object.keys(porTipo).some(t => t !== 'estudio')) {
+        const maxT = Math.max(...Object.values(porTipo).map(x => x.min), 1);
+        main.appendChild(h('section.tarjeta.barras-h', h('h2', 'Estudio, clases y ensayos'),
+          modelo.TIPOS.filter(t => porTipo[t.id]).map(t => h('div.fila',
+            h('span.nombre', { title: porTipo[t.id].n + (porTipo[t.id].n === 1 ? ' sesión' : ' sesiones') }, t.icono + ' ' + t.nombre + ' (' + porTipo[t.id].n + ')'),
+            h('div.barra', h('i', { style: { width: (porTipo[t.id].min / maxT * 100) + '%', background: t.id === 'estudio' ? 'var(--acento)' : 'var(--tipo-otros)' } })),
+            h('span.valor', u.minutos(porTipo[t.id].min)))),
+          h('p.mini.tenue', { style: { margin: '8px 0 0' } }, 'Todo cuenta para el plan, la racha y la constancia: las clases, los ensayos y los conciertos también son días de música. Aquí ves cuánto ha sido estudio personal.')));
+      }
 
       // ---------- mapa de calor
       main.appendChild(h('section.tarjeta', h('h2', 'Constancia'), mapaCalor(porDia, plan, 18), h('p.mini.tenue', { style: { margin: '8px 0 0' } }, 'Últimas 18 semanas. Más intenso = más cerca (o por encima) del objetivo del día.')));
@@ -165,7 +189,7 @@
 
   function graficoSemanas(semanas) {
     const W = 600, H = 200, ml = 34, mb = 22, mt = 8;
-    const max = Math.max(60, ...semanas.map(x => Math.max(x.prev, x.real))) * 1.1;
+    const max = Math.max(60, ...semanas.map(x => Math.max(x.prev, x.real + (x.otros || 0)))) * 1.1;
     const n = semanas.length, bw = (W - ml) / n;
     const y = v => mt + (H - mt - mb) * (1 - v / max);
     const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Minutos por semana, previsto y real' });
@@ -179,11 +203,15 @@
     semanas.forEach((x, i) => {
       const cx = ml + i * bw;
       const ancho = Math.max(3, bw * 0.62);
-      const cumple = x.prev && x.real >= x.prev;
+      const cumple = x.prev && x.real + (x.otros || 0) >= x.prev;
+      if (x.otros > 0) svg.appendChild(s('rect', {
+        x: cx + (bw - ancho) / 2, y: y(x.real + x.otros), width: ancho, height: Math.max(0, y(x.real) - y(x.real + x.otros)), rx: Math.min(5, ancho / 3),
+        fill: 'var(--tipo-otros)'
+      }, s('title', {}, `Semana del ${u.fechaCorta(x.ini)}: ${u.minutos(x.otros)} de clases, ensayos o conciertos`)));
       svg.appendChild(s('rect', {
         x: cx + (bw - ancho) / 2, y: y(x.real), width: ancho, height: Math.max(0, y(0) - y(x.real)), rx: Math.min(5, ancho / 3),
         fill: cumple ? 'var(--bien)' : 'var(--acento)'
-      }, s('title', {}, `Semana del ${u.fechaCorta(x.ini)}: ${u.minutos(x.real)} de ${u.minutos(x.prev)}`)));
+      }, s('title', {}, `Semana del ${u.fechaCorta(x.ini)}: ${u.minutos(x.real)} de estudio de ${u.minutos(x.prev)} previstos`)));
       if (x.prev) svg.appendChild(s('line', { x1: cx + 2, x2: cx + bw - 2, y1: y(x.prev), y2: y(x.prev), stroke: 'var(--tinta-3)', 'stroke-width': 3, 'stroke-linecap': 'round' }));
       if (i % cada === 0) svg.appendChild(s('text', { x: cx + bw / 2, y: H - 6, 'text-anchor': 'middle' }, u.fechaCorta(x.ini)));
     });

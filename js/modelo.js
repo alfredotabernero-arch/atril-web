@@ -174,8 +174,93 @@
   }
 
   /* ---------------- Sesión de estudio en curso ---------------- */
+
+  /* ======================= Tipos de sesión ======================= */
+  const TIPOS = [
+    { id: 'estudio', nombre: 'Estudio', icono: '🎵' },
+    { id: 'clase', nombre: 'Clase', icono: '🎓' },
+    { id: 'ensayo', nombre: 'Ensayo', icono: '👥' },
+    { id: 'concierto', nombre: 'Concierto', icono: '🎭' }
+  ];
+  const tipoDe = x => (x && TIPOS.some(t => t.id === x.tipo)) ? x.tipo : 'estudio';
+  const tipo = id => TIPOS.find(t => t.id === id) || TIPOS[0];
+
+  /* ======================= Pasajes difíciles ======================= */
+  /*
+   * Van dentro de la obra, por compases y sin depender de las secciones:
+   * obra.pasajes = [{ id, desde, hasta, nota, creado, resuelto: null|fecha, trabajado: null|fecha }]
+   * Así siguen marcados aunque se creen, dividan o unan secciones.
+   */
+  const pasajesDe = (obra, todos) => ((obra && obra.pasajes) || []).filter(p => todos || !p.resuelto).slice().sort((a, b) => a.desde - b.desde || a.hasta - b.hasta);
+  const textoPasaje = p => p.desde === p.hasta ? 'c. ' + p.desde : 'c. ' + p.desde + '–' + p.hasta;
+  /** Pasajes que caen (aunque sea en parte) dentro de una sección */
+  function pasajesEnSeccion(obra, s, todos) {
+    if (!tieneRango(s)) return [];
+    return pasajesDe(obra, todos).filter(p => p.desde <= s.hasta && p.hasta >= s.desde);
+  }
+  /** Sección donde se estudia un pasaje: la que contiene más compases suyos */
+  function seccionDePasaje(secciones, p) {
+    let mejor = null, max = 0;
+    (secciones || []).forEach(s => {
+      if (!tieneRango(s)) return;
+      const n = Math.min(s.hasta, p.hasta) - Math.max(s.desde, p.desde) + 1;
+      if (n > max) { max = n; mejor = s; }
+    });
+    return mejor;
+  }
+  async function guardarPasaje(obraId, datos) {
+    const obra = await DB.get('obras', obraId);
+    if (!obra) return null;
+    obra.pasajes = obra.pasajes || [];
+    let p = datos.id && obra.pasajes.find(x => x.id === datos.id);
+    if (!p) { p = { id: u.uid(), creado: Date.now(), resuelto: null, trabajado: null }; obra.pasajes.push(p); }
+    Object.assign(p, datos, { id: p.id });
+    if (p.hasta < p.desde) [p.desde, p.hasta] = [p.hasta, p.desde];
+    await DB.put('obras', obra);
+    return p;
+  }
+  async function borrarPasaje(obraId, id) {
+    const obra = await DB.get('obras', obraId);
+    if (!obra || !obra.pasajes) return;
+    obra.pasajes = obra.pasajes.filter(p => p.id !== id);
+    await DB.put('obras', obra);
+  }
+  async function marcarPasajes(obraId, ids, cambios) {
+    if (!obraId || !ids || !ids.length) return;
+    const obra = await DB.get('obras', obraId);
+    if (!obra || !obra.pasajes) return;
+    let algo = false;
+    obra.pasajes.forEach(p => { if (ids.includes(p.id)) { Object.assign(p, cambios); algo = true; } });
+    if (algo) await DB.put('obras', obra);
+  }
+
+  /*
+   * Registro de lectura de la obra por días (para el resumen semanal):
+   * obra.lecturaLog = { 'AAAA-MM-DD': { a: compases leídos al empezar el día, b: al terminar } }
+   */
+  async function anotarLectura(obraId, delta) {
+    const obra = await DB.get('obras', obraId);
+    if (!obra) return;
+    const secs = await DB.byIndex('secciones', 'obraId', obraId);
+    const ahora = lecturaObra(secs, obra).leidos;
+    const k = u.claveDia(new Date());
+    obra.lecturaLog = obra.lecturaLog || {};
+    // delta: compases que ha cambiado esta anotación (para saber cuántos había leídos al empezar el día)
+    const e = obra.lecturaLog[k] || { a: Math.max(0, ahora - (delta || 0)), b: ahora };
+    e.b = ahora;
+    obra.lecturaLog[k] = e;
+    await DB.put('obras', obra);
+  }
+  /** Compases leídos en un intervalo de días [ini, fin) */
+  function lecturaEntre(obra, ini, fin) {
+    const a = u.claveDia(ini), b = u.claveDia(fin);
+    let n = 0;
+    Object.entries((obra && obra.lecturaLog) || {}).forEach(([k, e]) => { if (k >= a && k < b) n += Math.max(0, (e.b || 0) - (e.a || 0)); });
+    return n;
+  }
+
   const sesion = {
-    estado: null, // {obraId, seccionId, inicio, pausadaEn, pausas, tramos: {seccionId: seg}, tramoDesde}
+    estado: null, // {obraId, seccionId, inicio, pausadaEn, pausas, tramos: {seccionId: seg}, tramoDesde, pasajeId, pasajes: [ids]}
     _ev: new Set(),
     on(f) { this._ev.add(f); return () => this._ev.delete(f); },
     _emit() { this._ev.forEach(f => f(this.estado)); },
@@ -220,7 +305,17 @@
     async cambiar(obraId, seccionId) {
       if (!this.estado) return;
       this._acumular();
+      if (this.estado.obraId !== (obraId || null)) { this.estado.pasajes = []; this.estado.pasajeId = null; }
       this.estado.obraId = obraId || null; this.estado.seccionId = seccionId || null;
+      if (this.estado.pasajeId && this.estado.seccionId !== seccionId) this.estado.pasajeId = null;
+      await this._guardar();
+    },
+    /** Indica el pasaje difícil que se está estudiando (queda anotado como trabajado al terminar) */
+    async pasaje(id) {
+      if (!this.estado) return;
+      this.estado.pasajeId = id || null;
+      this.estado.pasajes = this.estado.pasajes || [];
+      if (id && !this.estado.pasajes.includes(id)) this.estado.pasajes.push(id);
       await this._guardar();
     },
     async pausar() {
@@ -250,8 +345,11 @@
         minutos: datos.minutos,
         notas: datos.notas || '',
         valoracion: datos.valoracion || 0,
-        bpm: datos.bpm || null
+        bpm: datos.bpm || null,
+        tipo: TIPOS.some(t => t.id === datos.tipo) ? datos.tipo : 'estudio'
       };
+      const pas = (e.pasajes || []).slice();
+      if (pas.length && s.obraId === e.obraId) s.pasajes = pas;
       // varias secciones en la misma sesión: cada una con sus minutos; la principal es la de más tiempo
       const rep = (datos.reparto || []).filter(r => r.seccionId && r.minutos > 0);
       if (rep.length > 1) {
@@ -261,6 +359,7 @@
       }
       await DB.put('sesiones', s);
       await registrarTempo(datos.bpmSeccionId || s.seccionId, s.bpm);
+      if (s.pasajes) await marcarPasajes(s.obraId, s.pasajes, { trabajado: s.fin });
       await this.descartar();
       return s;
     }
@@ -378,7 +477,7 @@
     const obrasEnteras = new Set(lista.filter(x => !x.s).map(x => x.c.obra.id));
     const n = lista.length ? Math.max(1, nAuto - 1) : nAuto;
     const auto = sugerencias(cart, sesiones, n + yaEn.size + 5)
-      .filter(x => !yaEn.has(x.s.id) && !obrasEnteras.has(x.c.obra.id)).slice(0, n)
+      .filter(x => !obrasEnteras.has(x.c.obra.id) && (x.pasaje || !yaEn.has(x.s.id))).slice(0, n)
       .map(x => Object.assign({}, x, { preparado: false, hecho: false }));
     return { preparados: lista, auto };
   }
@@ -415,8 +514,27 @@
         if (maestria(s) >= 1 && !pend) p -= 6;
         lista.push({ c, s, puntos: p, motivos, hoy: dias === 0 });
       });
+      // pasajes difíciles sin resolver: se proponen por sí mismos, aunque no haya secciones
+      pasajesDe(c.obra).forEach(pa => {
+        const sec = seccionDePasaje(c.secciones, pa);
+        const motivos = [];
+        let p = 6.5;
+        const dias = pa.trabajado ? u.diasEntre(pa.trabajado, hoy) : null;
+        if (dias === null) { p += 3; motivos.push({ t: 'Sin trabajarlo aún', c: 'info' }); }
+        else if (dias >= 2) { p += Math.min(5, dias * 0.6); motivos.push({ t: 'Hace ' + dias + ' días', c: 'info' }); }
+        else if (dias === 1) motivos.push({ t: 'Ayer', c: 'info' });
+        if (pa.nota) motivos.push({ t: pa.nota.length > 28 ? pa.nota.slice(0, 26) + '…' : pa.nota, c: 'info' });
+        if (urg) p += urg;
+        lista.push({ c, s: sec, pasaje: pa, puntos: p, motivos, hoy: dias === 0 });
+      });
     });
-    const orden = lista.sort((a, b) => b.puntos - a.puntos).filter(x => x.puntos > 0);
+    // como mucho un pasaje difícil por obra cada día (el más necesitado)
+    const conPasaje = new Set();
+    const orden = lista.sort((a, b) => b.puntos - a.puntos).filter(x => x.puntos > 0).filter(x => {
+      if (!x.pasaje) return true;
+      if (conPasaje.has(x.c.obra.id)) return false;
+      conPasaje.add(x.c.obra.id); return true;
+    });
     // lo trabajado hoy no se vuelve a proponer, salvo que no quede nada más
     const pendientesHoy = orden.filter(x => !x.hoy);
     return (pendientesHoy.length ? pendientesHoy : orden).slice(0, n);
@@ -432,6 +550,7 @@
   A.modelo = {
     ESTADOS, FASES, estado, indiceFase, faseDe, estadoObra, DOMINIO, COLORES, compasesSeccion, rangoTexto, tieneRango, pendientes, sugerencias,
     fraccionLeida, compasesLeidos, lecturaObra, compasesSinSeccion, maestria, progresoSeccion, progresoObra, ritmoObra, migrar,
-    plan, previstoDia, minutosPorDia, racha, sesion, registrarTempo, cartera, nombreTempo, trabajadasHoy, paraDia, hoyTeToca
+    plan, previstoDia, minutosPorDia, racha, sesion, registrarTempo, cartera, nombreTempo, trabajadasHoy, paraDia, hoyTeToca,
+    TIPOS, tipo, tipoDe, pasajesDe, textoPasaje, pasajesEnSeccion, seccionDePasaje, guardarPasaje, borrarPasaje, marcarPasajes, anotarLectura, lecturaEntre
   };
 })(window.Atril);

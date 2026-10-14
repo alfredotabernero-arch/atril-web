@@ -34,7 +34,16 @@
         if (!tg.indexNames.contains('seccionId')) tg.createIndex('seccionId', 'seccionId');
       };
       req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      req.onerror = () => {
+        // Vuelta atrás (rollback): si los datos vienen de una versión posterior de Atril,
+        // la base de datos tiene un número mayor. Se abre tal cual, sin tocar su estructura;
+        // lo que esta versión no conoce se ignora y se conserva.
+        if (req.error && req.error.name === 'VersionError') {
+          const r2 = indexedDB.open(NOMBRE);
+          r2.onsuccess = () => resolve(r2.result);
+          r2.onerror = () => reject(r2.error);
+        } else reject(req.error);
+      };
     });
     return dbp;
   }

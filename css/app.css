@@ -36,6 +36,7 @@
   --nav-alto: 70px;
   /* alias usados por el código */
   --acento: var(--primario);
+  --tipo-otros: #16B4C8;
   --acento-suave: var(--primario-suave);
   --acento-tinta: #fff;
   --bien: var(--verde);
@@ -850,3 +851,65 @@ input.blanco { accent-color: #fff; }
 :root[data-theme="dark"] .ayuda-globo::after { border-top-color: #F4F1FF; }
 :root[data-theme="dark"] .ayuda-globo.abajo::after { border-bottom-color: #F4F1FF; }
 button, a, [role=button] { -webkit-touch-callout: none; }
+
+/* ======================= 2.1: tipos de sesión ======================= */
+.tipos-sesion { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tipos-sesion button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: 12px; border: 2px solid var(--borde); background: var(--superficie); color: var(--tinta-2); font: inherit; font-size: .8rem; font-weight: 800; cursor: pointer; }
+.tipos-sesion button span { font-size: 1.25rem; line-height: 1; }
+.tipos-sesion button.on { border-color: var(--primario); background: color-mix(in srgb, var(--primario) 12%, var(--superficie)); color: var(--primario); }
+.chip.tipo-clase, .chip.tipo-ensayo, .chip.tipo-concierto { background: color-mix(in srgb, var(--tipo-otros) 16%, transparent); color: var(--tipo-otros); }
+
+/* ======================= 2.1: pasajes difíciles ======================= */
+.tarjeta-pasajes .tarjeta-icono { font-size: 1rem; color: #fff; }
+.item.pasaje { align-items: center; }
+.pasaje-rango { flex: none; font-weight: 900; font-size: .9rem; padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, #FF8A3D 16%, transparent); color: #D9661C; white-space: nowrap; }
+.item.pasaje.resuelto .pasaje-rango { background: color-mix(in srgb, var(--verde) 14%, transparent); color: var(--verde); text-decoration: line-through; }
+.item.pasaje.activo .pasaje-rango { background: #FF8A3D; color: #fff; }
+.mapa-pasajes { position: relative; height: 8px; margin-top: 4px; }
+.mapa-pasajes span { position: absolute; top: 0; height: 8px; border-radius: 4px; background: #FF8A3D; box-shadow: 0 0 0 1.5px var(--superficie); }
+.leyenda i.pas { background: #FF8A3D; height: 6px; vertical-align: 1px; }
+.atril-pasajes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 14px; background: color-mix(in srgb, #FF8A3D 10%, var(--superficie)); border-bottom: 1px solid var(--borde); }
+.atril-pasajes-et { font-size: 1rem; }
+.atril-pasajes .chip { border: 0; cursor: pointer; font: inherit; font-size: .8rem; font-weight: 800; background: color-mix(in srgb, #FF8A3D 18%, transparent); color: #C85A12; }
+.atril-pasajes .chip.on { background: #FF8A3D; color: #fff; }
+:root[data-theme="dark"] .pasaje-rango, :root[data-theme="dark"] .atril-pasajes .chip { color: #FFB47A; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pasaje-rango, :root:not([data-theme="light"]) .atril-pasajes .chip { color: #FFB47A; } }
+
+/* ======================= 2.1: modo sencillo ======================= */
+body.modo-sencillo .no-sencillo { display: none !important; }
+body.modo-sencillo nav.pestanas a[data-id="estadisticas"] { display: none; }
+body.modo-sencillo { font-size: 17px; }
+body.modo-sencillo .btn { min-height: 48px; font-size: 1.02rem; }
+body.modo-sencillo .sec-card { padding: 16px; }
+body.modo-sencillo .sec-nombre { font-size: 1.15rem; }
+body.modo-sencillo .segmentado button { min-height: 46px; font-size: 1rem; }
+.sen-saludo h2 { font-size: 1.7rem; margin: 4px 0 2px; }
+.sen-saludo p { margin: 0 0 14px; color: var(--tinta-2); font-size: 1.1rem; }
+.sen-semana h2 { margin: 0; }
+.sen-cuenta { font-size: 1.3rem; font-weight: 900; color: #E2A100; }
+.sen-estrellas { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 12px; text-align: center; }
+.sen-dia { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; border-radius: 14px; }
+.sen-dia.hoy { background: color-mix(in srgb, var(--primario) 10%, transparent); }
+.sen-estrella { font-size: 2.1rem; line-height: 1; color: var(--tinta-3); opacity: .45; }
+.sen-dia.con .sen-estrella { color: #F5B400; opacity: 1; text-shadow: 0 2px 8px color-mix(in srgb, #F5B400 45%, transparent); }
+.sen-dia.futuro { opacity: .5; }
+.sen-dia b { font-size: .9rem; }
+.sen-dia small { font-size: .68rem; color: var(--tinta-3); min-height: 1em; }
+.sen-racha { margin: 12px 0 0; font-weight: 800; font-size: 1.05rem; text-align: center; }
+.btn.sen-grande { width: 100%; min-height: 64px; font-size: 1.25rem; border-radius: 20px; margin: 4px 0 18px; justify-content: center; }
+.btn.sen-grande svg { width: 26px; height: 26px; }
+.btn.sen-secundario { min-height: 56px; font-size: 1.05rem; margin-top: 10px; }
+.sen-toca { display: flex; flex-direction: column; gap: 10px; }
+.sen-tarjeta { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 16px; border-radius: 20px; border: 0; cursor: pointer; font: inherit; color: var(--tinta);
+  background: color-mix(in srgb, var(--c) 12%, var(--superficie)); border-left: 8px solid var(--c); }
+.sen-tarjeta b { display: block; font-size: 1.15rem; }
+.sen-tarjeta .crece > span { display: block; color: var(--tinta-2); font-size: 1rem; margin-top: 2px; }
+.sen-tarjeta-icono { flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--c); color: #fff; font-size: 1.4rem; font-weight: 900; }
+.sen-tarjeta.hecha { opacity: .6; }
+.tarjeta-sencillo .tarjeta-icono { font-size: 1rem; }
+.pin-grande { font-size: 2rem; letter-spacing: .5em; text-align: center; width: 100%; padding: 10px; }
+.atril-pasajes .enlace { margin-left: auto; }
+button.chip { border: 0; cursor: pointer; font: inherit; font-size: .76rem; font-weight: 800; }
+.pasaje-nota { margin-left: 8px; font-weight: 700; }
+.item.pasaje .crece { min-width: 0; line-height: 1.5; }
+.barras-h .valor { white-space: nowrap; }

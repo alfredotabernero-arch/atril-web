@@ -45,6 +45,7 @@
           h('a.btn-icono', { href: '#/ajustes', 'aria-label': 'Ajustes', title: 'Ajustes' }, icono('ajustes')),
           h('button.btn-icono.btn-salir', { 'aria-label': 'Salir de Atril', title: 'Salir de Atril', onclick: () => A.app.pedirSalida() }, icono('salir')));
       }
+      if (A.sencillo && A.sencillo.activo) return A.sencillo.hoy({ main, titulo, acciones });
 
       const [plan, sesiones, cart] = await Promise.all([modelo.plan(), DB.all('sesiones'), modelo.cartera()]);
       const porDia = modelo.minutosPorDia(sesiones);
@@ -96,17 +97,20 @@
             h('span.mini.tenue', preparados.length ? (auto.length ? 'lo que preparaste y tus prioridades' : 'lo que preparaste') : 'según tus prioridades'), cambiarHoy));
           const caja = h('div.sugerencias');
           let num = 0;
-          todos.forEach(({ c, s, motivos, preparado, hecho }, i) => {
+          todos.forEach(({ c, s, motivos, preparado, hecho, pasaje }, i) => {
             if (!preparado && i > 0 && todos[i - 1].preparado && !todos[i - 1].hecho) caja.appendChild(h('div.sug-separador', 'Además, según tus prioridades'));
             const destino = s ? '#/seccion/' + s.id : '#/obra/' + c.obra.id;
-            const jugar = s
+            const jugar = pasaje
+              ? h('button.btn.primario.redondo-btn', { 'aria-label': 'Estudiar el pasaje', title: 'Estudiar el pasaje', onclick: () => A.dialogos.estudiarPasaje(c.obra, pasaje, c.secciones) }, icono('play'))
+              : s
               ? h('a.btn.primario.redondo-btn', { href: '#/atril/' + s.id, 'aria-label': 'Estudiar en el atril', title: 'Al atril' }, icono('play'))
               : h('button.btn.primario.redondo-btn', { 'aria-label': 'Empezar a estudiar', title: 'Empezar', onclick: () => A.dialogos.iniciar(c.obra.id) }, icono('play'));
             caja.appendChild(h('div.sug-card' + (preparado ? '.preparada' : '') + (hecho ? '.hecha' : ''), { style: { '--c': c.obra.color } },
               h('div.sug-num', hecho ? icono('check') : ++num),
               h('a.crece.sug-cuerpo', { href: destino },
                 h('div.sug-obra', c.obra.titulo),
-                s ? h('div.sug-sec', (s.letra ? s.letra + ' · ' : '') + s.nombre, h('span', ' ' + modelo.rangoTexto(s)))
+                pasaje ? h('div.sug-sec', '⚡ Pasaje ' + modelo.textoPasaje(pasaje), s ? h('span', ' · ' + (s.letra ? s.letra + ' · ' : '') + s.nombre) : null)
+                : s ? h('div.sug-sec', (s.letra ? s.letra + ' · ' : '') + s.nombre, h('span', ' ' + modelo.rangoTexto(s)))
                   : h('div.sug-sec', c.secciones.length ? 'Toda la obra' : 'La obra'),
                 h('div.fila.envuelve', { style: { gap: '5px', marginTop: '6px' } }, motivos.slice(0, 3).map(m => h('span.chip.' + m.c, m.t)))),
               jugar));

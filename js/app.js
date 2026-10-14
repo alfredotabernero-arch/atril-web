@@ -34,6 +34,55 @@
     };
   }
 
+  /** Botones para elegir el tipo de sesión (estudio, clase, ensayo, concierto). Devuelve {nodo, valor()} */
+  function selectorTipo(inicial) {
+    let v = inicial || 'estudio';
+    const caja = h('div.tipos-sesion', { role: 'radiogroup', 'aria-label': 'Tipo de sesión' });
+    const pintar = () => Array.from(caja.children).forEach(b => { const on = b.dataset.t === v; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+    modelo.TIPOS.forEach(t => caja.appendChild(h('button', { type: 'button', role: 'radio', 'data-t': t.id, onclick: () => { v = t.id; pintar(); } }, h('span', t.icono), t.nombre)));
+    pintar();
+    return { nodo: h('div.campo', h('span.campo-et', 'Tipo'), caja), valor: () => v };
+  }
+
+  /** Estudiar un pasaje difícil: en su sección si la tiene; si no, con el cronómetro de la obra */
+  async function estudiarPasaje(obra, p, secciones) {
+    secciones = secciones || await DB.byIndex('secciones', 'obraId', obra.id);
+    const sec = modelo.seccionDePasaje(secciones, p);
+    if (sec) { location.hash = '#/atril/' + sec.id + '/p:' + p.id; return; }
+    const e = modelo.sesion.estado;
+    if (!e) await modelo.sesion.iniciar(obra.id, null);
+    else if (e.obraId !== obra.id) await modelo.sesion.cambiar(obra.id, null);
+    await modelo.sesion.pasaje(p.id);
+    u.toast('Estudiando el pasaje ' + modelo.textoPasaje(p) + ' ⏱');
+    if (!location.hash.startsWith('#/obra/' + obra.id)) location.hash = '#/obra/' + obra.id;
+  }
+
+  /** Crear o editar un pasaje difícil de una obra */
+  async function dialogoPasaje(obra, pasaje, propuesta) {
+    const p = pasaje || propuesta || {};
+    const max = Number(obra.compases) || 5000;
+    const cuerpo = h('div',
+      h('div.rejilla-2',
+        u.campo('Desde el compás', h('input', { type: 'number', name: 'desde', min: 1, max, value: p.desde || '', required: true })),
+        u.campo('Hasta el compás', h('input', { type: 'number', name: 'hasta', min: 1, max, value: p.hasta || '' }))),
+      u.campo('Nota (opcional)', h('input', { type: 'text', name: 'nota', value: p.nota || '', maxlength: 80, placeholder: 'p. ej. cambio a 3ª posición, afinación del Fa#' })),
+      h('p.mini.tenue', 'No hace falta crear secciones: el pasaje queda marcado en la obra y sigue marcado aunque luego la dividas o unas secciones.'));
+    const r = await u.modal(pasaje ? 'Pasaje difícil' : 'Nuevo pasaje difícil', cuerpo, [
+      { texto: 'Cancelar', accion: () => null },
+      { texto: 'Guardar', clase: 'primario', accion: () => {
+        const f = u.leerForm(cuerpo);
+        if (!(f.desde >= 1)) { u.toast('Indica al menos el compás de inicio'); return false; }
+        if (!(f.hasta >= 1)) f.hasta = f.desde;
+        if (obra.compases && Math.max(f.desde, f.hasta) > obra.compases) { u.toast('La obra tiene ' + obra.compases + ' compases'); return false; }
+        return f;
+      } }
+    ]);
+    if (!r) return null;
+    const g = await modelo.guardarPasaje(obra.id, Object.assign({ id: pasaje && pasaje.id }, { desde: r.desde, hasta: r.hasta, nota: r.nota || '' }));
+    u.toast(pasaje ? 'Pasaje guardado' : 'Pasaje marcado: ' + modelo.textoPasaje(g));
+    return g;
+  }
+
   async function dialogoIniciar(obraId, seccionId) {
     if (modelo.sesion.estado) { u.toast('Ya hay una sesión en marcha'); return; }
     const sel = await selectorObra(obraId, seccionId);
@@ -84,20 +133,24 @@
     } else {
       bloqueQue = h('div', u.campo('Minutos de estudio', h('input', { type: 'number', name: 'minutos', min: 1, max: 600, value: minReal })), sel.nodo);
     }
+    const tipoSel = selectorTipo('estudio');
+    const sencillo = A.sencillo && A.sencillo.activo;
+    if (sencillo) bloqueQue.style.display = 'none';   // en el modo sencillo el reparto se guarda tal cual
     const cuerpo = h('div',
-      h('p.tenue', 'Has estudiado ', varias ? totalEl : h('b', u.minutos(minReal)), varias ? ' en ' + tramos.length + ' secciones.' : '.'),
+      h('p.tenue', 'Has estudiado ', varias ? totalEl : h('b', u.minutos(minReal)), varias && !sencillo ? ' en ' + tramos.length + ' secciones.' : '.'),
       bloqueQue,
-      u.campo(varias && sec ? 'Tempo alcanzado en «' + sec.nombre + '» (BPM)' : 'Tempo alcanzado (BPM)', h('input', {
+      tipoSel.nodo,
+      sencillo ? null : u.campo(varias && sec ? 'Tempo alcanzado en «' + sec.nombre + '» (BPM)' : 'Tempo alcanzado (BPM)', h('input', {
         type: 'number', name: 'bpm', min: 20, max: 400, placeholder: sec && sec.tempoActual ? 'Último: ' + sec.tempoActual : 'Opcional',
         value: ultimoBpm && e.seccionId ? ultimoBpm : undefined
       }), 'Se guarda como tempo actual de la sección.'),
       h('div.campo', h('span.campo-et', '¿Qué tal ha ido?'), estrellas),
-      u.campo('Notas', h('textarea', { name: 'notas', placeholder: 'Qué has trabajado, qué falta…' }))
+      u.campo(sencillo ? 'Notas (si quieres)' : 'Notas', h('textarea', { name: 'notas', placeholder: sencillo ? 'Qué has tocado hoy…' : 'Qué has trabajado, qué falta…' }))
     );
     const r = await u.modal('Terminar sesión', cuerpo, [
       { texto: 'Descartar', clase: 'peligro', accion: async () => (await u.confirmar('¿Descartar esta sesión sin guardarla?', 'Descartar', 'peligro')) ? 'descartar' : false },
       { texto: 'Seguir', accion: () => null },
-      { texto: 'Guardar', clase: 'primario', accion: () => Object.assign(u.leerForm(cuerpo), varias ? { obraId: e.obraId } : sel.valor(), { valoracion }) }
+      { texto: 'Guardar', clase: 'primario', accion: () => Object.assign(u.leerForm(cuerpo), varias ? { obraId: e.obraId } : sel.valor(), { valoracion, tipo: tipoSel.valor() }) }
     ]);
     if (r === 'descartar') { await modelo.sesion.descartar(); u.toast('Sesión descartada'); return; }
     if (!r) return;
@@ -109,27 +162,29 @@
     }
     if (!(r.minutos > 0)) r.minutos = minReal;
     await modelo.sesion.terminar(r);
-    u.toast('Sesión guardada: ' + u.minutos(r.minutos));
+    u.toast(sencillo ? '¡Muy bien! ⭐ ' + u.minutos(r.minutos) : 'Sesión guardada: ' + u.minutos(r.minutos));
   }
 
   /** Añadir una sesión pasada a mano */
-  async function dialogoSesionManual(obraId) {
+  async function dialogoSesionManual(obraId, tipoInicial) {
     const sel = await selectorObra(obraId, null);
     const hoy = u.claveDia(new Date());
+    const tipoSel = selectorTipo(tipoInicial || 'estudio');
     const cuerpo = h('div',
       h('div.rejilla-2',
         u.campo('Fecha', h('input', { type: 'date', name: 'fecha', value: hoy, max: hoy })),
         u.campo('Minutos', h('input', { type: 'number', name: 'minutos', min: 1, max: 600, value: 30 }))),
+      tipoSel.nodo,
       sel.nodo,
       u.campo('Notas', h('textarea', { name: 'notas' })));
     const r = await u.modal('Añadir sesión', cuerpo, [
       { texto: 'Cancelar', accion: () => null },
-      { texto: 'Guardar', clase: 'primario', accion: () => Object.assign(u.leerForm(cuerpo), sel.valor()) }
+      { texto: 'Guardar', clase: 'primario', accion: () => Object.assign(u.leerForm(cuerpo), sel.valor(), { tipo: tipoSel.valor() }) }
     ]);
     if (!r || !(r.minutos > 0)) return;
     const inicio = new Date(r.fecha + 'T18:00:00').getTime();
-    await DB.put('sesiones', { obraId: r.obraId, seccionId: r.seccionId, inicio, fin: inicio + r.minutos * 60000, minutos: r.minutos, notas: r.notas, valoracion: 0, manual: true });
-    u.toast('Sesión añadida');
+    await DB.put('sesiones', { obraId: r.obraId, seccionId: r.seccionId, inicio, fin: inicio + r.minutos * 60000, minutos: r.minutos, notas: r.notas, valoracion: 0, manual: true, tipo: r.tipo });
+    u.toast({ clase: 'Clase añadida', ensayo: 'Ensayo añadido', concierto: 'Concierto añadido' }[r.tipo] || 'Sesión añadida');
   }
 
   async function dialogoObra(obra) {
@@ -297,8 +352,19 @@
     const aviso = h('p.mini.tenue');
     const pintarAviso = () => { const c = Number(corte.value); aviso.textContent = c > sec.desde && c <= sec.hasta ? `Quedarán: c. ${sec.desde}–${c - 1} y c. ${c}–${sec.hasta}.` : 'Elige un compás dentro de la sección.'; };
     corte.addEventListener('input', pintarAviso); pintarAviso();
+    // cortes propuestos en los bordes de los pasajes difíciles, para que cada uno quede entero
+    const obraSec = await DB.get('obras', sec.obraId);
+    const cortes = new Map();
+    modelo.pasajesEnSeccion(obraSec, sec).forEach(p => {
+      if (p.desde > sec.desde && p.desde <= sec.hasta && !cortes.has(p.desde)) cortes.set(p.desde, 'antes del pasaje ' + modelo.textoPasaje(p));
+      if (p.hasta + 1 > sec.desde && p.hasta + 1 <= sec.hasta && !cortes.has(p.hasta + 1)) cortes.set(p.hasta + 1, 'después del pasaje ' + modelo.textoPasaje(p));
+    });
+    const propuestas = cortes.size ? h('div.campo', h('span.campo-et', '⚡ Cortes que respetan los pasajes difíciles'),
+      h('div.fila.envuelve', { style: { gap: '6px' } }, [...cortes.entries()].sort((a, b) => a[0] - b[0]).map(([c, t]) =>
+        h('button.chip.aviso', { type: 'button', title: t, onclick: () => { corte.value = c; pintarAviso(); } }, 'c. ' + c + ' · ' + t)))) : null;
     const r = await u.modal('Dividir sección', h('div',
-      h('p', { style: { marginTop: 0 } }, 'La sección se parte en dos. Las dos conservan la fase, las estrellas y el tempo; lo leído se reparte solo. Las fotos, tareas, notas e historial se quedan en la primera.'),
+      h('p', { style: { marginTop: 0 } }, 'La sección se parte en dos. Las dos conservan la fase, las estrellas y el tempo; lo leído se reparte solo. Las fotos, tareas, notas e historial se quedan en la primera. Los pasajes difíciles siguen marcados en sus compases.'),
+      propuestas,
       u.campo('La segunda empieza en el compás', corte), aviso,
       h('div.rejilla-2', u.campo('Nombre de la primera', nombre1), u.campo('Nombre de la segunda', nombre2))), [
       { texto: 'Cancelar', accion: () => null },
@@ -434,7 +500,7 @@
   }
 
   A.dialogos = { selectorObra, paraDia: dialogoParaDia, botonManana, iniciar: dialogoIniciar, terminar: dialogoTerminar, sesionManual: dialogoSesionManual, obra: dialogoObra, seccion: dialogoSeccion, variasSecciones: dialogoVariasSecciones,
-    obraCompleta: dialogoObraCompleta, dividir: dialogoDividir, unir: unirConSiguiente };
+    obraCompleta: dialogoObraCompleta, dividir: dialogoDividir, unir: unirConSiguiente, pasaje: dialogoPasaje, estudiarPasaje, selectorTipo };
 
   /* ======================= Navegación ======================= */
   const PESTANAS = [
@@ -461,6 +527,7 @@
     if (historial[historial.length - 1] !== actual) historial.push(actual);
     if (historial.length > 60) historial.splice(0, historial.length - 60);
     const { vista, params } = ruta();
+    if (A.sencillo && A.sencillo.activo && A.sencillo.bloqueada(vista)) { location.replace('#/hoy'); return; }
     const v = A.vistas[vista] || A.vistas.hoy;
     if (limpiar) { try { limpiar(); } catch (e) { console.error(e); } limpiar = null; }
     const pestana = v.pestana || vista;
@@ -687,6 +754,7 @@
   async function arrancar() {
     cerrarBienvenida();
     await aplicarTema();
+    if (A.sencillo) await A.sencillo.cargar();
     montarNav();
     montarBarraSesion();
     await modelo.migrar();
