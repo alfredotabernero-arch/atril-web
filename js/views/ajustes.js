@@ -140,12 +140,15 @@
 
       // ---------- «En el atril»
       const micPref = await DB.kvGet('atrilMicAlCambiar', 'preguntar');
+      const cronoAuto = await DB.kvGet('atrilCronoAuto', false);
       const segMic = h('div.segmentado', [['preguntar', 'Preguntar'], ['mantener', 'Mantener'], ['apagar', 'Apagar']].map(([v, t]) =>
         h('button' + (micPref === v ? '.on' : ''), { type: 'button', onclick: async () => { await DB.kvSet('atrilMicAlCambiar', v); A.app.refrescar(); } }, t)));
       main.appendChild(h('section.tarjeta', h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#6C4CF5' } }, A.icono('afinador')), h('h2', 'En el atril')),
         h('p.mini', { style: { marginTop: 0 } }, 'Si tienes el afinador escuchando y pasas a otra sección, el micrófono:'),
         segMic,
-        h('p.mini.tenue', { style: { margin: '8px 0 0' } }, '«Preguntar» te lo consulta la primera vez. Al salir de «En el atril» el micrófono se apaga siempre.')));
+        h('p.mini.tenue', { style: { margin: '8px 0 12px' } }, '«Preguntar» te lo consulta la primera vez. Al salir de «En el atril» el micrófono se apaga siempre.'),
+        A.herr.interruptor('Poner en marcha el cronómetro al entrar', cronoAuto, v => DB.kvSet('atrilCronoAuto', !!v)),
+        h('p.mini.tenue', { style: { margin: '2px 0 0' } }, 'Desactivado (lo normal), el cronómetro de estudio empieza cuando pulsas ▶ arriba a la derecha. Si ya lo tenías en marcha, sigue contando al cambiar de sección.')));
 
       // ---------- copia de seguridad
       const fichero = h('input', { type: 'file', accept: '.zip,.json,application/zip,application/json', style: { display: 'none' } });

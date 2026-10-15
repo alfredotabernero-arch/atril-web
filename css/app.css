@@ -447,8 +447,11 @@ body.modo-atril main { padding: 0; height: 100dvh; display: flex; flex-direction
 .atril-miniaturas button { width: 34px; height: 34px; border-radius: 10px; border: 0; background: rgba(255,255,255,.6); font-weight: 900; cursor: pointer; }
 .atril-miniaturas button.on { background: #fff; color: var(--primario); }
 .atril-pista { position: absolute; top: 8px; left: 0; right: 0; text-align: center; font-size: .72rem; font-weight: 700; color: rgba(255,255,255,.55); pointer-events: none; }
-.atril-sin-foto { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #fff; padding: 24px; }
-.atril-sin-foto p { opacity: .8; max-width: 300px; }
+.atril-partitura.vacia { flex: none; background: transparent; padding: 8px 16px 0; }
+.atril-sin-foto { display: flex; align-items: center; gap: 8px; width: 100%; border: 2px dashed var(--borde); background: transparent; color: var(--tinta-2); border-radius: 14px; padding: 8px 12px; font: inherit; font-weight: 800; font-size: .85rem; cursor: pointer; }
+.atril-sin-foto svg { width: 18px; height: 18px; flex: none; }
+.atril-sin-foto small { margin-left: auto; font-weight: 700; color: var(--tinta-3); }
+.atril-sin-foto:hover { border-color: var(--c, var(--primario)); color: var(--c, var(--primario)); }
 .atril-panel { flex: 1 1 42%; min-height: 0; overflow: auto; padding: 14px 16px 20px; background: var(--fondo); }
 .atril-panel-cuerpo { margin-top: 10px; }
 .atril-navsec { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
@@ -476,6 +479,8 @@ body.modo-atril main { padding: 0; height: 100dvh; display: flex; flex-direction
   .atril-cuerpo { flex-direction: row; }
   .atril-partitura { flex: 1 1 auto; }
   .atril-panel { flex: 0 0 360px; border-left: 2px solid var(--superficie-2); }
+  .atril-cuerpo:has(.atril-partitura.vacia) { flex-direction: column; }
+  .atril-cuerpo:has(.atril-partitura.vacia) .atril-panel { flex: 1 1 auto; border-left: 0; }
 }
 
 /* ---------- Metrónomo ---------- */

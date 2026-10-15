@@ -29,24 +29,40 @@
       const ant = hermanas[idx - 1], sig = hermanas[idx + 1];
       const color = (obra && obra.color) || 'var(--primario)';
 
-      // ---------- cronómetro: arranca solo al entrar
+      // ---------- cronómetro: si ya había una sesión, sigue en esta sección; si no, se pone en marcha con ▶
+      // (arranca solo al entrar si así se elige en Ajustes › En el atril, y siempre en el modo sencillo de los niños)
       const e = modelo.sesion.estado;
-      if (!e) { await modelo.sesion.iniciar(sec.obraId, sec.id); u.toast('Cronómetro de estudio en marcha ⏱'); }
-      else if (e.seccionId !== sec.id) await modelo.sesion.cambiar(sec.obraId, sec.id);
+      if (!e && ((A.sencillo && A.sencillo.activo) || await DB.kvGet('atrilCronoAuto', false))) { await modelo.sesion.iniciar(sec.obraId, sec.id); u.toast('Cronómetro de estudio en marcha ⏱'); }
+      else if (e && e.seccionId !== sec.id) await modelo.sesion.cambiar(sec.obraId, sec.id);
+      let pasajeEspera = null;   // pasaje elegido antes de poner en marcha el cronómetro
+      const arrancar = async () => {
+        if (modelo.sesion.estado) return;
+        await modelo.sesion.iniciar(sec.obraId, sec.id);
+        if (pasajeEspera) await modelo.sesion.pasaje(pasajeEspera);
+        u.toast('Cronómetro de estudio en marcha ⏱');
+      };
       u.pantallaEncendida(true, 'atril');
       // pasaje difícil: «#/atril/<sección>/p:<id>» lo deja elegido; los de la sección se pueden elegir aquí
       const pasajesSec = modelo.pasajesEnSeccion(obra, sec);
       const pedido = (params[1] || '').startsWith('p:') ? params[1].slice(2) : null;
-      if (pedido && pasajesSec.some(p => p.id === pedido)) await modelo.sesion.pasaje(pedido);
+      if (pedido && pasajesSec.some(p => p.id === pedido)) { if (modelo.sesion.estado) await modelo.sesion.pasaje(pedido); else pasajeEspera = pedido; }
       else if (modelo.sesion.estado && modelo.sesion.estado.pasajeId && !pasajesSec.some(p => p.id === modelo.sesion.estado.pasajeId)) await modelo.sesion.pasaje(null);
 
       const reloj = h('span.atril-reloj.num');
-      const btnPausa = h('button.btn-icono', { 'aria-label': 'Pausar', onclick: () => modelo.sesion.estado && (modelo.sesion.estado.pausadaEn ? modelo.sesion.reanudar() : modelo.sesion.pausar()) });
+      const btnPausa = h('button.btn-icono', { 'aria-label': 'Pausar', onclick: () => {
+        const st = modelo.sesion.estado;
+        if (!st) return arrancar();
+        return st.pausadaEn ? modelo.sesion.reanudar() : modelo.sesion.pausar();
+      } });
+      const btnTerminar = h('button.btn.primario.pequeno', { onclick: () => A.dialogos.terminar() }, 'Terminar');
       const pintarSesion = () => {
         const st = modelo.sesion.estado;
-        reloj.textContent = st ? u.reloj(modelo.sesion.segundos()) : '—';
-        reloj.classList.toggle('pausado', !!(st && st.pausadaEn));
-        btnPausa.replaceChildren(icono(st && st.pausadaEn ? 'play' : 'pausa'));
+        reloj.textContent = st ? u.reloj(modelo.sesion.segundos()) : u.reloj(0);
+        reloj.classList.toggle('pausado', !st || !!st.pausadaEn);
+        btnPausa.replaceChildren(icono(!st || st.pausadaEn ? 'play' : 'pausa'));
+        const etq = !st ? 'Poner en marcha el cronómetro' : st.pausadaEn ? 'Seguir' : 'Pausar';
+        btnPausa.setAttribute('aria-label', etq); btnPausa.title = etq;
+        btnTerminar.style.display = st ? '' : 'none';
       };
       const tReloj = setInterval(pintarSesion, 500);
       const offSesion = modelo.sesion.on(pintarSesion);
@@ -57,17 +73,20 @@
         h('div.crece.atril-que',
           h('b', (sec.letra ? sec.letra + ' · ' : '') + sec.nombre),
           h('span', [obra && obra.titulo, modelo.rangoTexto(sec)].filter(Boolean).join(' · '))),
-        h('div.atril-crono', reloj, btnPausa,
-          h('button.btn.primario.pequeno', { onclick: () => A.dialogos.terminar() }, 'Terminar'))));
+        h('div.atril-crono', reloj, btnPausa, btnTerminar)));
 
       // ---------- pasajes difíciles de esta sección
       if (pasajesSec.length) {
         const caja = h('div.atril-pasajes');
         const pintarPasajes = () => {
-          const act = modelo.sesion.estado && modelo.sesion.estado.pasajeId;
+          const act = modelo.sesion.estado ? modelo.sesion.estado.pasajeId : pasajeEspera;
           caja.replaceChildren(h('span.atril-pasajes-et', '⚡'), ...pasajesSec.map(p => h('button.chip' + (p.id === act ? '.on' : ''), {
             title: p.nota || 'Pasaje difícil', 'aria-pressed': String(p.id === act),
-            onclick: async () => { await modelo.sesion.pasaje(p.id === act ? null : p.id); pintarPasajes(); }
+            onclick: async () => {
+              if (modelo.sesion.estado) await modelo.sesion.pasaje(p.id === act ? null : p.id);
+              else pasajeEspera = p.id === act ? null : p.id;
+              pintarPasajes();
+            }
           }, modelo.textoPasaje(p) + (p.id === act && p.nota ? ' · ' + p.nota : ''))));
           const elegido = pasajesSec.find(p => p.id === act);
           if (elegido) caja.appendChild(h('button.enlace.mini', { onclick: async () => {
@@ -90,11 +109,13 @@
       async function pintarPartitura(sel = 0) {
         const fotos = await A.fotos.deSeccion(sec.id);
         partitura.innerHTML = '';
+        // sin fotos: solo una barra fina para añadirla si se quiere; el resto de la pantalla, para el panel
+        partitura.classList.toggle('vacia', !fotos.length);
         if (!fotos.length) {
-          partitura.appendChild(h('div.atril-sin-foto',
-            h('div.vacio-icono', icono('camara')),
-            h('p', 'Haz una foto de esta parte de la partitura para anotar digitaciones, arcos y puntos clave. Tocas con tu partitura en el atril.'),
-            h('button.btn.primario', { onclick: async () => { if (await A.fotos.anadir(sec)) pintarPartitura(); } }, icono('camara'), 'Añadir foto')));
+          partitura.appendChild(h('button.atril-sin-foto', {
+            title: 'Opcional: una foto de esta parte de la partitura para anotar digitaciones, arcos y puntos clave',
+            onclick: async () => { if (await A.fotos.anadir(sec)) pintarPartitura(); }
+          }, icono('camara'), h('span', 'Añadir foto de la partitura'), h('small', 'opcional')));
           return;
         }
         sel = u.clamp(sel, 0, fotos.length - 1);
