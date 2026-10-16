@@ -106,6 +106,8 @@ nav.pestanas a {
 nav.pestanas a svg { width: 44px; height: 30px; padding: 4px 10px; border-radius: 99px; transition: background .2s, color .2s; }
 nav.pestanas a.activa { color: var(--primario); }
 nav.pestanas a.activa svg { background: var(--primario-suave); }
+nav.pestanas .nav-marca { display: none; }
+main .bloque > .seccion-titulo:first-child { margin-top: 22px; }
 
 /* ---------- Barra de sesión ---------- */
 #barra-sesion {
@@ -980,3 +982,48 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: .76rem; font
 .esc-cuenta.late { animation: esc-cuenta 1s ease-out; }
 @keyframes esc-cuenta { from { transform: scale(1.6); opacity: 0; } 30% { opacity: 1; } to { transform: scale(1); } }
 .esc-escena .btn.translucido { background: rgba(255,255,255,.16); color: #fff; border-color: transparent; }
+
+/* ---------- Pantalla ancha (PC, tablet en horizontal): menú lateral y dos columnas ---------- */
+@media (min-width: 1024px) {
+  :root { --lateral: 232px; }
+  body:not(.modo-atril) { padding-left: var(--lateral); }
+  body:not(.modo-atril) #app { max-width: 1240px; padding-bottom: 40px; }
+  body.con-sesion:not(.modo-atril) #app { padding-bottom: 120px; }
+  .cabecera { padding: 22px 30px 12px; }
+  .cabecera h1 { font-size: 1.9rem; }
+  body:not(.modo-atril) main { padding: 4px 30px 30px; }
+
+  nav.pestanas {
+    top: 0; right: auto; width: var(--lateral); flex-direction: column; justify-content: flex-start;
+    border-radius: 0; padding: 20px 14px; box-shadow: 1px 0 0 var(--borde); overflow-y: auto;
+  }
+  nav.pestanas .nav-marca { display: flex; flex: none; height: auto; flex-direction: row; justify-content: flex-start; align-items: center; gap: 10px; padding: 4px 10px 22px; text-decoration: none; color: var(--tinta); font-weight: 900; font-size: 1.35rem; letter-spacing: -.01em; }
+  nav.pestanas .nav-marca svg { width: 44px; height: 44px; padding: 7px; border-radius: 14px; background: var(--superficie-2) !important; flex: none; overflow: visible; }
+  nav.pestanas .dentro { display: flex; flex-direction: column; gap: 4px; padding: 0; max-width: none; }
+  nav.pestanas a:not(.nav-marca) {
+    flex: none; flex-direction: row; justify-content: flex-start; gap: 12px;
+    height: 46px; padding: 0 12px; border-radius: 14px; font-size: .95rem; color: var(--tinta-2);
+  }
+  nav.pestanas a:not(.nav-marca) svg { width: 22px; height: 22px; padding: 0; background: none !important; flex: none; }
+  nav.pestanas a:not(.nav-marca):hover { background: var(--superficie-2); color: var(--tinta); }
+  nav.pestanas a.activa, nav.pestanas a.activa:hover { background: var(--primario-suave); color: var(--primario); }
+
+  #barra-sesion { left: calc(50% + var(--lateral) / 2); bottom: 16px; max-width: 760px; }
+
+  /* dos columnas: los bloques bajan por la primera y siguen por la segunda */
+  main.columnas { columns: 2; column-gap: 20px; }
+  main.columnas > * { break-inside: avoid; }
+  main.columnas > .ancho { column-span: all; }
+  main.columnas > .bloque > .seccion-titulo:first-child, main.columnas > .seccion-titulo { margin-top: 4px; }
+  .segmentado { max-width: 620px; }
+
+  .rejilla-obras { grid-template-columns: repeat(3, 1fr); }
+  .sugerencias { grid-template-columns: repeat(3, 1fr); }
+  main div:has(> .tarjeta.metro) { display: grid; grid-template-columns: 1.15fr 1fr; gap: 0 20px; align-items: start; }
+  main div:has(> .tarjeta.metro) > :not(.metro):not(.metro-opciones) { grid-column: 1 / -1; }
+  .lista-secciones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .lista-secciones > * { margin: 0 !important; }
+}
+@media (min-width: 1500px) {
+  .rejilla-obras { grid-template-columns: repeat(4, 1fr); }
+}

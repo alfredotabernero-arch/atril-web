@@ -9,7 +9,7 @@
   /* Textos: una o dos frases. La clave es el texto del botón, su etiqueta (aria-label) o su data-ayuda. */
   const AYUDAS = {
     'Estudiar la obra': 'Pone en marcha el cronómetro para esta obra y te deja en esta pantalla; los minutos van a la obra. Para tener partitura, metrónomo y afinador a mano, entra en una sección y pulsa «Estudiar en el atril».',
-    'Estudiar en el atril': 'Abre «En el atril» con la partitura, el metrónomo, el afinador y las tareas de esta sección. El cronómetro arranca solo y los minutos van a esta sección.',
+    'Estudiar en el atril': 'Abre «En el atril» con la partitura, el metrónomo, el afinador y las tareas de esta sección. El cronómetro se pone en marcha con ▶ (o solo, si lo activas en Ajustes) y los minutos van a esta sección.',
     'Terminar sesión': 'Para el cronómetro y guarda la sesión: revisas los minutos, apuntas lo trabajado y lo valoras. Para cambiar de obra, termina aquí y empieza en la otra.',
     'Terminar': 'Para el cronómetro y guarda la sesión: revisas los minutos, apuntas lo trabajado y lo valoras.',
     'Pausar': 'Detiene el cronómetro un momento (una llamada, un descanso). Vuelve a pulsar para seguir.',

@@ -552,6 +552,7 @@
       const r = await v.render({ main, titulo, acciones, params, vigente: () => gen === generacion });
       if (gen !== generacion) { if (typeof r === 'function') r(); return; }
       limpiar = typeof r === 'function' ? r : null;
+      if (!v.pantallaCompleta) maquetar(main, vista);
     } catch (e) {
       console.error(e);
       main.appendChild(h('div.tarjeta', h('b', 'Algo ha fallado'), h('p.mini.tenue', String(e && e.message || e))));
@@ -565,8 +566,31 @@
     return pintar().then(() => window.scrollTo(0, y));
   }
 
+  /**
+   * Pantalla ancha (PC, tablet en horizontal): el contenido se reparte en dos columnas.
+   * Cada título de sección se une a lo que le sigue para que no se separen, y lo que debe ir a todo
+   * lo ancho (la cabecera de color, las rejillas, los botones del final) ocupa las dos columnas.
+   * En el móvil no cambia nada: los bloques se ven uno debajo de otro, como siempre.
+   */
+  const SIN_COLUMNAS = new Set(['obras', 'herramientas']);
+  function maquetar(main, vista) {
+    main.classList.toggle('columnas', !SIN_COLUMNAS.has(vista));
+    if (SIN_COLUMNAS.has(vista)) return;
+    for (const t of [...main.children]) {
+      if (!t.classList.contains('seccion-titulo') || !t.nextElementSibling) continue;
+      const sig = t.nextElementSibling;
+      const bloque = h('div.bloque' + (t.classList.contains('no-sencillo') ? '.no-sencillo' : ''));
+      t.before(bloque); bloque.append(t, sig);
+    }
+    for (const el of main.children) {
+      if (el.matches('.hero, .segmentado, .nav-secciones, .sugerencias') || el.querySelector(':scope > .rejilla-obras, :scope > .lista-secciones, :scope > .sugerencias')) el.classList.add('ancho');
+    }
+  }
+
   function montarNav() {
-    const nav = h('nav.pestanas', h('div.dentro', PESTANAS.map(p =>
+    const marca = h('a.nav-marca', { href: '#/hoy', 'aria-label': 'Atril' });
+    marca.innerHTML = '<svg viewBox="100 100 312 340" aria-hidden="true"><path d="M136 122h240l-22 150H158z M256 272v148 M176 420l80-60 80 60" fill="none" stroke="#6C4CF5" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/><path d="M182 166h150M186 196h100M190 226h136" stroke="#FF4F8B" stroke-width="14" stroke-linecap="round"/><circle cx="300" cy="196" r="18" fill="#FF4F8B"/></svg><span>Atril</span>';
+    const nav = h('nav.pestanas', marca, h('div.dentro', PESTANAS.map(p =>
       h('a', { href: '#/' + p.id, 'data-id': p.id }, icono(p.icono), h('span', p.nombre)))));
     document.body.appendChild(nav);
   }
