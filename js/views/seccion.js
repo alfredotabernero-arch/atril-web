@@ -275,7 +275,7 @@
       }
 
       // --------- escuchar (3.0): confianza o fluidez de la sección y su evolución
-      if (obra) main.appendChild(A.escucharUI.tarjetaSeccion(sec, obra, await A.escuchar.deObra(sec.obraId)));
+      if (obra && A.escucharUI.activo()) main.appendChild(A.escucharUI.tarjetaSeccion(sec, obra, await A.escuchar.deObra(sec.obraId)));
 
       // --------- observaciones
       const estadoGuardado = h('span.mini.tenue');

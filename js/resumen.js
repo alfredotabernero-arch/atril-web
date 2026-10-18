@@ -174,7 +174,7 @@
         const txt = ob.pasajes.map(p => modelo.textoPasaje(p) + (p.resuelto && p.resuelto >= d.ini.getTime() && p.resuelto < d.fin.getTime() ? ' (¡resuelto!)' : ' (trabajado)') + (p.nota ? ': ' + p.nota : '')).join('; ');
         fila('Pasajes difíciles', (txt || 'Ninguno trabajado esta semana') + (ob.pendientesPas ? ` · quedan ${ob.pendientesPas} por resolver` : ''), C.naranja);
       }
-      if (ob.tomas.length) {
+      if (ob.tomas.length && A.escucharUI.activo()) {
         const pas = ob.tomas.filter(t => t.modo === 'concierto');
         const otras = ob.tomas.filter(t => t.modo !== 'concierto');
         const med = l => Math.round(l.reduce((a, t) => a + t.puntuacion, 0) / l.length);

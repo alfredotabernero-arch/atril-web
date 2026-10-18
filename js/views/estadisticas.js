@@ -153,7 +153,7 @@
 
       // ---------- escuchar (3.0)
       const tomasPer = tomas.filter(t => t.inicio >= desde.getTime() && t.puntuacion != null);
-      if (tomasPer.length) {
+      if (tomasPer.length && A.escucharUI.activo()) {
         const conf = tomasPer.filter(t => t.medida !== 'fluidez');
         const flu = tomasPer.filter(t => t.medida === 'fluidez');
         const pasadas = tomasPer.filter(t => t.modo === 'concierto');

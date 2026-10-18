@@ -150,6 +150,14 @@
         A.herr.interruptor('Poner en marcha el cronómetro al entrar', cronoAuto, v => DB.kvSet('atrilCronoAuto', !!v)),
         h('p.mini.tenue', { style: { margin: '2px 0 0' } }, 'Desactivado (lo normal), el cronómetro de estudio empieza cuando pulsas ▶ arriba a la derecha. Si ya lo tenías en marcha, sigue contando al cambiar de sección.')));
 
+      // ---------- «Escuchar» (3.1): activarlo o no, y grabar a la vez
+      const escGrabar = await DB.kvGet('escucharGrabar', false);
+      main.appendChild(h('section.tarjeta', h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#16B4C8' } }, A.icono('oido')), h('h2', 'Escuchar')),
+        A.herr.interruptor('Usar «Escuchar»', A.escucharUI.activo(), async v => { await A.escucharUI.poner(v); A.app.refrescar(); }),
+        h('p.mini.tenue', { style: { margin: '2px 0 10px' } }, 'Atril escucha cómo tocas y te dice si paras, dudas, afinas y mantienes el pulso. Si lo desactivas, desaparece de «En el atril», de las obras, las secciones y el progreso; las escuchas que ya tengas se guardan y vuelven a verse si lo activas.'),
+        A.escucharUI.activo() ? A.herr.interruptor('Grabar a la vez lo que toco', escGrabar, v => DB.kvSet('escucharGrabar', !!v)) : null,
+        A.escucharUI.activo() ? h('p.mini.tenue', { style: { margin: '2px 0 0' } }, 'Guarda también el audio de cada escucha, para oírte después desde el informe. Ocupa espacio en el aparato.') : null));
+
       // ---------- copia de seguridad
       const fichero = h('input', { type: 'file', accept: '.zip,.json,application/zip,application/json', style: { display: 'none' } });
       fichero.addEventListener('change', async () => {

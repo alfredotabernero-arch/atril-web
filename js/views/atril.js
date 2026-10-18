@@ -294,11 +294,13 @@
       const filaEsc = h('div.atril-esc', panelEsc.nodo);
 
       // ---------- barra de abajo: elegir metrónomo, afinador o escuchar
-      let herr = params[1] === 'escuchar' ? 'escuchar' : await DB.kvGet('atrilHerramienta', 'metronomo');
+      const conEscuchar = A.escucharUI.activo();
+      let herr = params[1] === 'escuchar' && conEscuchar ? 'escuchar' : await DB.kvGet('atrilHerramienta', 'metronomo');
+      if (herr === 'escuchar' && !conEscuchar) herr = 'metronomo';
       const btnDestello = h('button.chip-herr', { type: 'button', title: 'La pantalla parpadea en cada pulso', onclick: () => { cfg.destello = !cfg.destello; guardarCfg(); pintarHerr(); } }, icono('rayo'), 'Destello');
       const selHerr = h('div.atril-herr-sel');
       const pintarHerr = () => {
-        selHerr.replaceChildren(...[['metronomo', 'Metrónomo', 'metronomo'], ['afinador', 'Afinador', 'afinador'], ['escuchar', 'Escuchar', 'oido']].map(([id, txt, ic]) =>
+        selHerr.replaceChildren(...[['metronomo', 'Metrónomo', 'metronomo'], ['afinador', 'Afinador', 'afinador'], ['escuchar', 'Escuchar', 'oido']].filter(x => conEscuchar || x[0] !== 'escuchar').map(([id, txt, ic]) =>
           h('button' + (herr === id ? '.on' : ''), { type: 'button', onclick: () => cambiarHerr(id) }, icono(ic), txt)));
         btnDestello.classList.toggle('on', !!cfg.destello);
         btnDestello.style.display = herr === 'metronomo' ? '' : 'none';

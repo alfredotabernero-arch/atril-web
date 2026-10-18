@@ -12,6 +12,26 @@
     return e;
   };
   const sencillo = () => !!(A.sencillo && A.sencillo.activo);
+  // 3.1: Escuchar se puede desactivar en Ajustes (entonces desaparece de toda la app)
+  let activo = true;
+  async function cargar() { activo = (await DB.kvGet('escucharActivo', true)) !== false; }
+  async function poner(v) { activo = !!v; await DB.kvSet('escucharActivo', activo); }
+
+  /**
+   * Avisos del micrófono mientras escucha: «Te oigo ✓» en cuanto suena algo y «No te oigo» si pasan
+   * unos segundos sin oír nada. Devuelve una función que recibe el estado del motor y da {texto, clase}.
+   */
+  function vigiaMic() {
+    let oido = false, tOido = -1, t0 = null;
+    return st => {
+      if (t0 === null) t0 = st.t;
+      if (st.sonando) { if (!oido) tOido = st.t; oido = true; }
+      if (!oido) return st.t - t0 > 5 ? { texto: 'No te oigo: acerca el móvil a tu instrumento', clase: 'aviso' } : { texto: 'Toca cuando quieras: te estoy escuchando', clase: '' };
+      if (st.t - tOido < 2.5) return { texto: 'Te oigo ✓', clase: 'ok' };
+      const n = [st.paradas ? st.paradas + (st.paradas === 1 ? ' parada' : ' paradas') : '', st.dudas ? st.dudas + (st.dudas === 1 ? ' duda' : ' dudas') : ''].filter(Boolean).join(' · ');
+      return { texto: (st.sonando ? 'Te oigo ✓' : 'Escuchando…') + (n ? ' · ' + n : ''), clase: st.sonando ? 'ok' : '' };
+    };
+  }
   const mmss = seg => { seg = Math.max(0, Math.round(seg)); return Math.floor(seg / 60) + ':' + String(seg % 60).padStart(2, '0'); };
   const rangoTxt = (d, hh) => d && hh ? (d === hh ? 'c. ' + d : 'c. ' + d + '–' + hh) : '';
 
@@ -107,18 +127,22 @@
       toma.marcas.map(t => ['⚑', 'Marca', t]).concat(toma.paradas.map(([t, d]) => ['■', 'Parada de ' + d.toFixed(1) + ' s', t])).sort((a, b) => a[2] - b[2]).map(([ic, txt, t]) =>
         h('li', h('span.esc-ic' + (ic === '■' ? '.parada' : ''), ic), h('span.crece', txt + ' en ' + mmss(t)),
           g ? h('button.btn-icono', { type: 'button', 'aria-label': 'Escuchar desde aquí', title: 'Escuchar desde 2 s antes', onclick: () => reproducir(t) }, icono('play')) : null))) : null;
-    const cuerpo = h('div.esc-informe',
-      cabeza,
+    // 3.1: primero lo esencial (la nota y tres líneas); la línea de tiempo, los momentos y las notas, plegados
+    const detalle = h('details.esc-detalle',
+      h('summary', 'Ver el detalle' + (g ? ' y la grabación' : '')),
       lineaTiempo(toma, g ? reproducir : null),
       h('div.leyenda.esc-ley', h('span', h('i', { style: { background: 'var(--primario)' } }), 'Sonando'), h('span', h('i', { style: { background: '#FF5A5F' } }), 'Parada'),
         h('span', h('i', { style: { background: '#F5B400' } }), 'Duda'), h('span', h('i', { style: { background: '#3D7BFF' } }), 'Marca')),
       g ? h('p.mini.tenue', { style: { margin: '4px 0 0' } }, 'Toca la línea de tiempo para escuchar la grabación desde ese momento.') : null,
+      marcas,
+      u.campo('Notas', notas));
+    const cuerpo = h('div.esc-informe',
+      cabeza,
       sencillo() ? h('p', h('b', paradasTxt)) : h('div.esc-metricas',
         filaMetrica('Continuidad', m.continuidad, paradasTxt, 'Toca un poco más para medirla.'),
         toma.modo === 'lectura' ? null : filaMetrica('Afinación', m.afinacion, 'Notas afinadas (±' + E().TOL_AFIN + ' cents)', 'Pocas notas claras: acércate al micrófono.'),
         filaMetrica('Pulso', m.pulso, 'Regularidad entre las notas', 'Pocas notas para medir el pulso.')),
-      marcas,
-      u.campo('Notas', notas));
+      detalle);
     const r = await u.modal(opc.titulo || (toma.modo === 'concierto' ? 'Pasada completa' : 'Lo que he escuchado'), cuerpo, [
       { texto: 'Borrar', clase: 'peligro', accion: async () => (await u.confirmar('¿Borrar esta escucha' + (g ? ' y su grabación' : '') + '?', 'Borrar', 'peligro')) ? 'borrar' : false },
       { texto: 'Hecho', clase: 'primario', accion: () => 'ok' }
@@ -168,47 +192,67 @@
       if (r) { objetivo = r; pintar(); }
     }
 
+    const textoObjetivo = () => objetivo.tipo === 'pasaje' ? '⚡ ' + modelo.textoPasaje(objetivo.pasaje)
+      : objetivo.tipo === 'compases' ? 'c. ' + objetivo.desde + (objetivo.hasta ? '–' + objetivo.hasta : ' en adelante')
+      : 'Esta sección' + (modelo.rangoTexto(sec) ? ' (' + modelo.rangoTexto(sec) + ')' : '');
+    async function cambiarObjetivo() {
+      const r = await u.modal('¿Qué vas a tocar?', cerrar => h('div.esc-elegir',
+        h('button.btn.bloque', { type: 'button', onclick: () => cerrar({ tipo: 'seccion', desde: sec.desde || null, hasta: sec.hasta || null }) },
+          'Esta sección' + (modelo.rangoTexto(sec) ? ' · ' + modelo.rangoTexto(sec) : '')),
+        ...o.pasajes.map(p => h('button.btn.bloque.pas', { type: 'button', onclick: () => cerrar({ tipo: 'pasaje', pasaje: p, desde: p.desde, hasta: p.hasta }) }, '⚡ ' + modelo.textoPasaje(p))),
+        h('button.btn.bloque', { type: 'button', onclick: () => cerrar('compases') }, 'Unos compases…')), [
+        { texto: 'Cancelar', accion: () => null }
+      ]);
+      if (r === 'compases') return elegirCompases();
+      if (r) objetivo = r;
+      pintar();
+    }
+
     function pintar() {
       if (!objetivo) objetivo = objetivoInicial();
       if (motor) return;
-      const chips = [
-        h('button.chip' + (objetivo.tipo === 'seccion' ? '.on' : ''), { type: 'button', onclick: () => { objetivo = { tipo: 'seccion', desde: sec.desde || null, hasta: sec.hasta || null }; pintar(); } },
-          'Esta sección' + (modelo.rangoTexto(sec) ? ' · ' + modelo.rangoTexto(sec) : '')),
-        h('button.chip' + (objetivo.tipo === 'compases' ? '.on' : ''), { type: 'button', onclick: elegirCompases },
-          objetivo.tipo === 'compases' ? 'c. ' + objetivo.desde + (objetivo.hasta ? '–' + objetivo.hasta : ' →') : 'Unos compases…'),
-        ...o.pasajes.map(p => h('button.chip.pas' + (objetivo.tipo === 'pasaje' && objetivo.pasaje.id === p.id ? '.on' : ''), { type: 'button', title: p.nota || 'Pasaje difícil', onclick: () => { objetivo = { tipo: 'pasaje', pasaje: p, desde: p.desde, hasta: p.hasta }; pintar(); } }, '⚡ ' + modelo.textoPasaje(p)))
-      ];
-      const chipGrabar = h('button.chip-herr' + (grabar ? '.on' : ''), { type: 'button', title: 'Grabar a la vez para escucharte después', onclick: () => { grabar = !grabar; DB.kvSet('escucharGrabar', grabar); pintar(); } }, icono('grabar'), 'Grabar');
       caja.replaceChildren(
-        h('div.esc-que', h('span.mini.tenue', '¿Qué vas a tocar?'), h('div.esc-chips', chips)),
-        h('div.atril-metro.esc-fila',
-          h('div.crece', h('b', lectura ? 'Escucho tu lectura' : 'Escucho cómo te sale'),
-            h('div.mini.tenue', lectura ? 'Mido la fluidez: si lees sin pararte y con pulso.' : 'Mido paradas, afinación y pulso. Para cuando quieras.')),
-          chipGrabar,
-          h('button.atril-play', { 'aria-label': 'Empezar a escuchar', title: 'Empezar a escuchar', onclick: empezar }, icono('oido'))));
+        h('div.esc-inicio',
+          h('div.esc-que-linea', h('span.mini.tenue', lectura ? 'Escucharé tu lectura de:' : 'Escucharé:'), h('b', textoObjetivo()),
+            h('button.enlace.mini', { type: 'button', onclick: cambiarObjetivo }, 'Cambiar')),
+          h('button.btn.primario.esc-boton', { type: 'button', onclick: empezar }, icono('oido'), 'Escúchame'),
+          h('p.mini.tenue', { style: { margin: 0, textAlign: 'center' } }, lectura ? 'Mido la fluidez: si lees sin pararte y con pulso.' : 'Mido paradas, afinación y pulso. Al terminar de tocar, para solo.')));
     }
 
     async function empezar() {
       await o.alEmpezar();   // el atril para el metrónomo y apaga el afinador
+      grabar = !!(await DB.kvGet('escucharGrabar', false));
       motor = E().crearMotor({
         obraId: obra && obra.id, seccionId: sec.id, pasajeId: objetivo.tipo === 'pasaje' ? objetivo.pasaje.id : null,
         desde: objetivo.desde, hasta: objetivo.hasta, modo: lectura ? 'lectura' : 'normal'
       });
+      caja.replaceChildren(h('div.esc-estado', h('b', 'Preparando el micrófono…')));
       try { await motor.empezar({ grabar }); }
-      catch (e) { u.toast(e.message); motor = null; pintar(); return; }
+      catch (e) { u.toast(e.message, 4000); motor = null; pintar(); return; }
       if (objetivo.tipo === 'pasaje') await modelo.sesion.pasaje(objetivo.pasaje.id);
       const reloj = h('b.num.esc-reloj', '0:00');
       const nivel = h('i');
-      const cont = h('span.mini.tenue', 'Toca cuando quieras');
+      const estado = h('b.esc-estado-txt', 'Toca cuando quieras: te estoy escuchando');
       const btnMarca = h('button.btn.pequeno', { type: 'button', title: 'Marca este momento', onclick: () => { const t = motor.marcar(); u.toast('⚑ Marcado en ' + mmss(t), 1200); } }, '⚑ Marcar');
-      caja.replaceChildren(h('div.atril-metro.esc-fila.escuchando',
-        h('div.crece', h('div.fila', { style: { gap: '8px' } }, h('span.esc-punto' + (grabar ? '.rec' : '')), reloj, h('div.esc-nivel', nivel)), cont),
-        btnMarca,
-        h('button.atril-play', { 'aria-label': 'Parar y ver el informe', title: 'Parar', onclick: () => terminar(true) }, icono('stop'))));
+      const bloque = h('div.esc-estado',
+        h('div.fila', { style: { gap: '10px', width: '100%' } }, h('span.esc-punto' + (grabar ? '.rec' : '')), reloj, h('div.esc-nivel.medio', nivel)),
+        estado,
+        h('div.fila', { style: { gap: '10px', justifyContent: 'center' } }, btnMarca,
+          h('button.btn.esc-parar', { type: 'button', onclick: () => terminar(true) }, icono('stop'), 'Parar')));
+      caja.replaceChildren(bloque);
+      const vigia = vigiaMic();
+      let silencio = 0;
       offMotor = motor.on(st => {
         nivel.style.width = Math.round(st.nivel * 100) + '%';
         nivel.classList.toggle('on', st.sonando);
-        cont.textContent = st.paradas || st.dudas ? [st.paradas ? st.paradas + (st.paradas === 1 ? ' parada' : ' paradas') : '', st.dudas ? st.dudas + (st.dudas === 1 ? ' duda' : ' dudas') : ''].filter(Boolean).join(' · ') : (st.sonando ? 'Escuchando…' : 'Toca cuando quieras');
+        const v = vigia(st);
+        estado.textContent = v.texto;
+        bloque.classList.toggle('aviso', v.clase === 'aviso');
+        bloque.classList.toggle('ok', v.clase === 'ok');
+        // al terminar de tocar: tras 7 s de silencio, para solo y enseña el informe
+        silencio = st.sonando ? 0 : silencio + 0.25;
+        if (motor && motor.toma.tocando > 3 && silencio >= 7) { u.toast('Has dejado de tocar: aquí tienes el informe', 2000); terminar(true); }
+        else if (motor && motor.toma.tocando > 3 && silencio >= 3) estado.textContent = '¿Has terminado? Paro en unos segundos';
       });
       tReloj = setInterval(() => { reloj.textContent = mmss(motor.segundos()); }, 500);
       u.pantallaEncendida(true, 'escuchar');
@@ -354,10 +398,10 @@
       capa.replaceChildren(h('button.btn-icono.esc-cerrar', { 'aria-label': 'Cerrar', onclick: cerrar }, icono('x')),
         titulo,
         h('div.esc-escena-cuerpo',
-          concierto ? h('p', 'Como en el concierto: de principio a fin, ', h('b', 'pase lo que pase, no pares'), '. Si te equivocas, sigue. Al terminar verás dónde ha habido paradas y dudas.') : h('p', 'Toca cuando quieras y pulsa ■ al terminar.'),
+          concierto ? h('p', 'Como en el concierto: de principio a fin, ', h('b', 'pase lo que pase, no pares'), '. Si te equivocas, sigue. Al terminar verás dónde ha habido paradas y dudas.') : h('p', 'Toca cuando quieras. Al terminar de tocar, paro solo.'),
           h('div.esc-opciones', chk('Grabar para escucharme después', grabar, v => { grabar = v; DB.kvSet(concierto ? 'conciertoGrabar' : 'escucharGrabar', v); }),
             concierto ? chk('Aplausos al final', aplausos, v => { aplausos = v; DB.kvSet('conciertoAplausos', v); }) : null),
-          h('button.btn.blanco.sen-grande', { onclick: concierto ? cuentaAtras : empezar }, icono(concierto ? 'play' : 'oido'), concierto ? 'Salir al escenario' : 'Empezar a escuchar')));
+          h('button.btn.blanco.sen-grande', { onclick: concierto ? cuentaAtras : empezar }, icono(concierto ? 'play' : 'oido'), concierto ? 'Salir al escenario' : 'Escúchame')));
     }
     async function cuentaAtras() {
       const num = h('div.esc-cuenta', '5');
@@ -370,17 +414,23 @@
       try { await motor.empezar({ grabar }); } catch (e) { u.toast(e.message); motor = null; preparar(); return; }
       const reloj = h('div.esc-escena-reloj', '0:00');
       const nivel = h('i');
-      const estado = h('p.esc-escena-estado', concierto ? '¡A tocar!' : 'Escuchando…');
+      const estado = h('p.esc-escena-estado', concierto ? '¡A tocar!' : 'Toca cuando quieras: te estoy escuchando');
       capa.replaceChildren(titulo, h('div.esc-escena-cuerpo',
         h('span.esc-punto.grande' + (grabar ? '.rec' : '')), reloj, h('div.esc-nivel.grande', nivel), estado,
         h('div.fila', { style: { justifyContent: 'center', gap: '12px', marginTop: '18px' } },
           h('button.btn.translucido', { onclick: () => { const t = motor.marcar(); u.toast('⚑ Marcado en ' + mmss(t), 1200); } }, '⚑ Marcar'),
           h('button.btn.blanco', { onclick: () => terminar() }, icono('stop'), concierto ? 'He terminado' : 'Parar'))));
       let silencioLargo = 0;
+      const vigia = vigiaMic();
       off = motor.on(st => {
         nivel.style.width = Math.round(st.nivel * 100) + '%';
         nivel.classList.toggle('on', st.sonando);
-        if (!concierto) estado.textContent = st.paradas ? st.paradas + (st.paradas === 1 ? ' parada' : ' paradas') : (st.sonando ? 'Escuchando…' : 'Toca cuando quieras');
+        const v = vigia(st);
+        if (!concierto) {
+          estado.textContent = v.texto;
+          silencioLargo = st.sonando ? 0 : silencioLargo + 0.25;
+          if (motor && motor.toma.tocando > 3 && silencioLargo >= 7) { terminar(); return; }
+        } else if (v.clase === 'aviso') { estado.textContent = v.texto; return; }
         // en el concierto: tras 8 s de silencio con la obra ya tocada, se da por terminada
         if (concierto) {
           silencioLargo = st.sonando ? 0 : silencioLargo + 0.25;
@@ -427,5 +477,5 @@
     } catch (e) { /* sin sonido */ }
   }
 
-  A.escucharUI = { panelAtril, informe, lineaTiempo, grafico, tarjetaSeccion, tarjetaObra, escena, concierto, queTxt, guardar };
+  A.escucharUI = { cargar, poner, activo: () => activo, panelAtril, informe, lineaTiempo, grafico, tarjetaSeccion, tarjetaObra, escena, concierto, queTxt, guardar };
 })(window.Atril);

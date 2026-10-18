@@ -784,6 +784,7 @@
     cerrarBienvenida();
     await aplicarTema();
     if (A.sencillo) await A.sencillo.cargar();
+    await A.escucharUI.cargar();
     montarNav();
     montarBarraSesion();
     await modelo.migrar();

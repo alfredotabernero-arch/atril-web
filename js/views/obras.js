@@ -160,7 +160,7 @@
       }
 
       // --------- escuchar y modo concierto (3.0)
-      main.appendChild(A.escucharUI.tarjetaObra(obra, secciones, tomas));
+      if (A.escucharUI.activo()) main.appendChild(A.escucharUI.tarjetaObra(obra, secciones, tomas));
 
       // --------- grabaciones
       if (grabaciones.length) {
@@ -185,7 +185,7 @@
     const resueltos = modelo.pasajesDe(obra, true).filter(p => p.resuelto).sort((a, b) => b.resuelto - a.resuelto);
     const enCurso = modelo.sesion.estado && modelo.sesion.estado.pasajeId;
     const confTxt = p => {
-      const c = tomas && A.escuchar.dePasaje(p, tomas);
+      const c = tomas && A.escucharUI.activo() && A.escuchar.dePasaje(p, tomas);
       return c ? h('span.esc-mini.peq', { style: { background: A.escuchar.color(c.valor) }, title: 'Confianza según tus escuchas' }, A.sencillo && A.sencillo.activo ? '★' + A.escuchar.estrellas(c.valor) : c.valor + ' %') : null;
     };
     const fila = p => {
@@ -270,7 +270,8 @@
       style: { left: ((p.desde - 1) / total * 100) + '%', width: Math.max(1.2, (p.hasta - p.desde + 1) / total * 100) + '%' },
       title: 'Pasaje difícil ' + modelo.textoPasaje(p) + (p.nota ? ': ' + p.nota : '')
     }))) : null;
-    const hayTomas = tomas && tomas.some(t => t.seccionId);
+    const hayTomas = A.escucharUI.activo() && tomas && tomas.some(t => t.seccionId);
+    if (!hayTomas) mapaPorConfianza = false;
     const selMapa = hayTomas ? h('div.segmentado.mini-seg', [[false, 'Fases'], [true, 'Confianza']].map(([v, t]) =>
       h('button' + (mapaPorConfianza === v ? '.on' : ''), { type: 'button', onclick: () => { mapaPorConfianza = v; const nuevo = mapaObra(secciones, obra, tomas); tarjeta.replaceWith(nuevo); } }, t))) : null;
     const leyenda = mapaPorConfianza
@@ -290,7 +291,7 @@
     const dom = s.dominio || 0;
     const fase = modelo.estado(modelo.faseDe(s));
     const npas = modelo.pasajesEnSeccion(obra, s).length;
-    const conf = tomas && tomas.length ? A.escuchar.deSeccion(s, tomas) : null;
+    const conf = tomas && tomas.length && A.escucharUI.activo() ? A.escuchar.deSeccion(s, tomas) : null;
     const tempo = s.tempoObjetivo ? `♩ ${s.tempoActual || '—'}/${s.tempoObjetivo}` : (s.tempoActual ? `♩ ${s.tempoActual}` : '');
     const mover = async (e, d) => {
       e.preventDefault(); e.stopPropagation();
