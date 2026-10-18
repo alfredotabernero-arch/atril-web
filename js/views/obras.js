@@ -302,7 +302,7 @@
       await DB.put('secciones', todas[i]); await DB.put('secciones', todas[j]);
       A.app.refrescar();
     };
-    const miniatura = fotos.length
+    const miniatura = fotos.length && A.fotos.activas()
       ? h('div.sec-foto', h('img', { src: A.fotos.url(fotos[0]), alt: '', loading: 'lazy' }), (fotos[0].trazos && fotos[0].trazos.length) ? A.anot.capa(fotos[0], 'cubrir') : null, fotos.length > 1 ? h('span', '+' + (fotos.length - 1)) : null)
       : null;
     return h('a.sec-card', { href: '#/seccion/' + s.id },

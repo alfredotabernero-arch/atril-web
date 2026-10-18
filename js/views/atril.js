@@ -107,8 +107,10 @@
       const tiras = h('div.atril-miniaturas');
       let lzActual = null;
       async function pintarPartitura(sel = 0) {
-        const fotos = await A.fotos.deSeccion(sec.id);
         partitura.innerHTML = '';
+        // 3.1.1: sin fotos de la partitura (Ajustes), el panel ocupa toda la pantalla
+        if (!A.fotos.activas()) { partitura.classList.add('vacia', 'oculta'); return; }
+        const fotos = await A.fotos.deSeccion(sec.id);
         // sin fotos: solo una barra fina para añadirla si se quiere; el resto de la pantalla, para el panel
         partitura.classList.toggle('vacia', !fotos.length);
         if (!fotos.length) {
@@ -344,16 +346,24 @@
         if (ev.code === 'Space') { ev.preventDefault(); if (herr === 'escuchar') panelEsc.alternar(); else (herr === 'afinador' ? btnMic : play).click(); }
         else if (ev.key === 'ArrowUp') { ev.preventDefault(); setBpm(cfg.bpm + (ev.shiftKey ? 5 : 1)); }
         else if (ev.key === 'ArrowDown') { ev.preventDefault(); setBpm(cfg.bpm - (ev.shiftKey ? 5 : 1)); }
-        else if (ev.key === 'ArrowRight' && sig) location.hash = '#/atril/' + sig.id;
-        else if (ev.key === 'ArrowLeft' && ant) location.hash = '#/atril/' + ant.id;
+        else if (ev.key === 'ArrowRight' && sig) u.irDeslizando('#/atril/' + sig.id, 'sig');
+        else if (ev.key === 'ArrowLeft' && ant) u.irDeslizando('#/atril/' + ant.id, 'ant');
       };
       document.addEventListener('keydown', teclas);
       pintarSesion();
+
+      // ---------- deslizar el dedo (3.1.1): a la izquierda, la sección siguiente; a la derecha, la anterior
+      const offDeslizar = u.deslizar(main, {
+        siguiente: sig ? () => u.irDeslizando('#/atril/' + sig.id, 'sig') : null,
+        anterior: ant ? () => u.irDeslizando('#/atril/' + ant.id, 'ant') : null
+      });
+      u.entrada(main);
 
       return () => {
         if (lzActual) lzActual.soltar();
         clearInterval(tReloj); offSesion(); offs.forEach(f => f());
         document.removeEventListener('keydown', teclas);
+        offDeslizar();
         u.pantallaEncendida(false, 'atril');
         cancelAnimationFrame(raf);
         // al pasar a otra sección del atril, el micrófono se queda abierto y la nueva vista decide; si no, se apaga

@@ -251,7 +251,45 @@ window.Atril = window.Atril || {};
   // algunos navegadores (iPhone) solo lo conceden tras tocar la pantalla
   document.addEventListener('pointerdown', () => { if (motivosPantalla.size && !wakeLock && !(A.nativo && A.nativo.Pantalla)) aplicarPantalla(); }, { passive: true });
 
+  /**
+   * Deslizar el dedo a izquierda o derecha sobre un elemento (3.1.1: pasar de sección).
+   * No cuenta si empieza en algo que ya usa el dedo: campos, deslizadores, fotos, lienzos o avisos.
+   * o: { siguiente(), anterior() }. Devuelve la función que lo quita.
+   */
+  const NO_DESLIZAR = 'input, textarea, select, canvas, .atril-partitura:not(.vacia), .galeria, .visor, .modal-fondo, [data-no-deslizar]';
+  function deslizar(el, o) {
+    let x0 = 0, y0 = 0, t0 = 0, vale = false;
+    const ini = e => {
+      vale = e.touches.length === 1 && !(e.target.closest && e.target.closest(NO_DESLIZAR));
+      if (!vale) return;
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
+    };
+    const fin = e => {
+      if (!vale) return;
+      vale = false;
+      const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+      const minimo = Math.max(60, Math.min(120, window.innerWidth * 0.18));
+      if (Date.now() - t0 > 800 || Math.abs(dx) < minimo || Math.abs(dy) > Math.abs(dx) * 0.5) return;
+      if (dx < 0 && o.siguiente) o.siguiente(); else if (dx > 0 && o.anterior) o.anterior();
+    };
+    const cancelar = () => { vale = false; };
+    el.addEventListener('touchstart', ini, { passive: true });
+    el.addEventListener('touchend', fin, { passive: true });
+    el.addEventListener('touchcancel', cancelar, { passive: true });
+    return () => { el.removeEventListener('touchstart', ini); el.removeEventListener('touchend', fin); el.removeEventListener('touchcancel', cancelar); };
+  }
+  /** Ir a otra sección con un deslizamiento: la nueva pantalla entra por el lado que toca */
+  function irDeslizando(hash, lado) { A.entrada = lado; location.hash = hash; }
+  function entrada(main) {
+    const lado = A.entrada; A.entrada = null;
+    if (!lado) return;
+    main.classList.remove('entra-sig', 'entra-ant'); void main.offsetWidth;
+    main.classList.add('entra-' + lado);
+    setTimeout(() => main.classList.remove('entra-' + lado), 450);
+  }
+
   A.u = {
+    deslizar, irDeslizando, entrada,
     h, append, $, $$, uid, claveDia, inicioDia, inicioSemana, sumarDias, fechaCorta, fechaLarga,
     hora, diasEntre, minutos, reloj, toast, modal, confirmar, leerForm, campo, clamp, descargar,
     pantallaEncendida, DIAS, DIAS_CORTOS, MESES

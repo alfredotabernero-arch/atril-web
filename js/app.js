@@ -785,6 +785,7 @@
     await aplicarTema();
     if (A.sencillo) await A.sencillo.cargar();
     await A.escucharUI.cargar();
+    await A.fotos.cargar();
     montarNav();
     montarBarraSesion();
     await modelo.migrar();

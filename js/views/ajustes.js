@@ -150,6 +150,11 @@
         A.herr.interruptor('Poner en marcha el cronómetro al entrar', cronoAuto, v => DB.kvSet('atrilCronoAuto', !!v)),
         h('p.mini.tenue', { style: { margin: '2px 0 0' } }, 'Desactivado (lo normal), el cronómetro de estudio empieza cuando pulsas ▶ arriba a la derecha. Si ya lo tenías en marcha, sigue contando al cambiar de sección.')));
 
+      // ---------- fotos de la partitura (3.1.1): quien no las use, las quita
+      main.appendChild(h('section.tarjeta', h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#3D7BFF' } }, A.icono('camara')), h('h2', 'Fotos de la partitura')),
+        A.herr.interruptor('Usar fotos de la partitura', A.fotos.activas(), async v => { await A.fotos.poner(v); A.app.refrescar(); }),
+        h('p.mini.tenue', { style: { margin: '2px 0 0' } }, 'Sirven para marcar digitaciones, arcos y puntos clave. Si no las usas, desactívalo: desaparecen de «En el atril» (el panel ocupa toda la pantalla), de la ficha de la sección y de las tarjetas. Las fotos que ya tengas no se borran y vuelven a verse si lo activas.')));
+
       // ---------- «Escuchar» (3.1): activarlo o no, y grabar a la vez
       const escGrabar = await DB.kvGet('escucharGrabar', false);
       main.appendChild(h('section.tarjeta', h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#16B4C8' } }, A.icono('oido')), h('h2', 'Escuchar')),

@@ -252,8 +252,8 @@
         h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#7C5CFF' } }, icono('estadisticas')), h('h2', 'Fase de estudio')),
         faseUI(sec, refrescarProg)));
 
-      // --------- partitura
-      main.appendChild(h('section.tarjeta',
+      // --------- partitura (se puede quitar en Ajustes › Fotos de la partitura)
+      if (A.fotos.activas()) main.appendChild(h('section.tarjeta',
         h('div.tarjeta-cab', h('span.tarjeta-icono', { style: { background: '#3D7BFF' } }, icono('imagen')), h('h2', 'Partitura')),
         galeriaUI(sec)));
 
@@ -357,7 +357,13 @@
           ant ? h('a.btn', { href: '#/seccion/' + ant.id }, icono('atras'), h('span', ant.letra || ant.nombre)) : h('span'),
           sig ? h('a.btn', { href: '#/seccion/' + sig.id }, h('span', sig.letra || sig.nombre), icono('adelante')) : h('span')));
       }
-      return () => { if (t) { clearTimeout(t); if (obs.value !== (sec.notas || '')) { sec.notas = obs.value; DB.put('secciones', sec); } } };
+      // --------- deslizar el dedo (3.1.1): a la izquierda, la sección siguiente; a la derecha, la anterior
+      const offDeslizar = u.deslizar(main, {
+        siguiente: sig ? () => u.irDeslizando('#/seccion/' + sig.id, 'sig') : null,
+        anterior: ant ? () => u.irDeslizando('#/seccion/' + ant.id, 'ant') : null
+      });
+      u.entrada(main);
+      return () => { offDeslizar(); if (t) { clearTimeout(t); if (obs.value !== (sec.notas || '')) { sec.notas = obs.value; DB.put('secciones', sec); } } };
     }
   };
 })(window.Atril);

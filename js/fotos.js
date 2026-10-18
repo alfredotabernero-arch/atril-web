@@ -216,5 +216,10 @@
     pintar();
   }
 
-  A.fotos = { capturar, reducir, deSeccion, anadir, borrar, rotar, url, soltar, zoom, visor, esMovil };
+  // 3.1.1: las fotos de la partitura se pueden quitar (Ajustes › Fotos de la partitura); las que haya no se borran
+  let activas = true;
+  async function cargar() { activas = (await DB.kvGet('fotosActivas', true)) !== false; }
+  async function poner(v) { activas = !!v; await DB.kvSet('fotosActivas', activas); }
+
+  A.fotos = { cargar, poner, activas: () => activas, capturar, reducir, deSeccion, anadir, borrar, rotar, url, soltar, zoom, visor, esMovil };
 })(window.Atril);
